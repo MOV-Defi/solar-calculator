@@ -1,0 +1,152 @@
+export const UNITS = ["шт.", "м.п.", "компл", "кВт"];
+
+export const INITIAL_GROUPS = {
+  "Основне обладнання": [
+    { id: 1, type: "ФЕП", name: "Сонячна панель 550W", unit: "шт.", quantity: 1, price: 0, currency: "USD", incomingPrice: 0, power: 550 },
+    { id: 2, type: "Інвертор", name: "Мережевий інвертор", unit: "шт.", quantity: 1, price: 0, currency: "USD", incomingPrice: 0 },
+    { id: 3, type: "АКБ", name: "Акумуляторна батарея", unit: "шт.", quantity: 1, price: 0, currency: "USD", incomingPrice: 0 },
+    { id: 4, type: "BMS", name: "BMS плата", unit: "шт.", quantity: 1, price: 0, currency: "USD", incomingPrice: 0 },
+    { id: 5, type: "Стійка", name: "Стійка для обладнання", unit: "шт.", quantity: 1, price: 0, currency: "USD", incomingPrice: 0 },
+    { id: 6, type: "Кліматична шафа", name: "Кліматична шафа", unit: "шт.", quantity: 1, price: 0, currency: "USD", incomingPrice: 0 },
+  ],
+  "Захист PV": [
+    { id: 51, type: "Захист PV", name: "Обмежувач напруги", unit: "шт.", quantity: 1, price: 0, currency: "USD", incomingPrice: 0 },
+    { id: 52, type: "Захист PV", name: "Тримач запобіжника", unit: "шт.", quantity: 1, price: 0, currency: "USD", incomingPrice: 0 },
+    { id: 53, type: "Захист PV", name: "Запобіжник", unit: "шт.", quantity: 1, price: 0, currency: "USD", incomingPrice: 0 },
+    { id: 54, type: "Захист PV", name: "Корпус щита 8 місць", unit: "шт.", quantity: 1, price: 0, currency: "USD", incomingPrice: 0 },
+  ],
+  "Захист AC": [
+    { id: 61, type: "Захист AC", name: "Автоматичний вимикач AC", unit: "шт.", quantity: 1, price: 0, currency: "USD", incomingPrice: 0 },
+    { id: 62, type: "Захист AC", name: "ОПН AC 230V/400V", unit: "шт.", quantity: 1, price: 0, currency: "USD", incomingPrice: 0 },
+    { id: 63, type: "Захист AC", name: "ПЗВ / Дифавтомат", unit: "шт.", quantity: 1, price: 0, currency: "USD", incomingPrice: 0 },
+    { id: 64, type: "Захист AC", name: "Реле напруги", unit: "шт.", quantity: 1, price: 0, currency: "USD", incomingPrice: 0 },
+    { id: 65, type: "Захист AC", name: "Щит монтажний AC", unit: "шт.", quantity: 1, price: 0, currency: "USD", incomingPrice: 0 },
+    { id: 66, type: "Захист AC", name: "Провід ПВ-3 (монтажний)", unit: "м.п.", quantity: 5, price: 0, currency: "USD", incomingPrice: 0 },
+    { id: 67, type: "Захист AC", name: "Наконечники та витратні матеріали", unit: "компл", quantity: 1, price: 0, currency: "USD", incomingPrice: 0 },
+  ],
+  "Захист DC": [
+    { id: 71, type: "Захист DC", name: "Роз'єднувач АКБ силовиий", unit: "шт.", quantity: 1, price: 0, currency: "USD", incomingPrice: 0 },
+    { id: 72, type: "Захист DC", name: "Запобіжник силовиий (125-200A)", unit: "шт.", quantity: 1, price: 0, currency: "USD", incomingPrice: 0 },
+    { id: 73, type: "Захист DC", name: "Кабель силовий 35-50мм2", unit: "м.п.", quantity: 4, price: 0, currency: "USD", incomingPrice: 0 },
+    { id: 74, type: "Захист DC", name: "Наконечники силові медні", unit: "шт.", quantity: 4, price: 0, currency: "USD", incomingPrice: 0 },
+  ],
+  "Кріплення": [
+    { id: 8, type: "Кріплення", name: "На похилий дах (метал)", unit: "компл", quantity: 10, price: 55, currency: "USD", incomingPrice: 12 },
+  ],
+  "Заземлення": [
+    { id: 9, type: "Заземлення", name: "Стержень обміднений 1.5м", unit: "шт.", quantity: 1, price: 250, currency: "USD", incomingPrice: 100 },
+  ],
+  "Кабельна продукція": [
+    { id: 4, type: "Кабель", name: "KBE DB+ 6.0mm DC black", unit: "м.п.", quantity: 200, price: 1.70, currency: "USD", incomingPrice: 1.00 },
+    { id: 41, type: "Кабель", name: "Конектор MC4 (пара)", unit: "компл", quantity: 1, price: 0, currency: "USD", incomingPrice: 0 },
+  ]
+};
+
+// Pre-defined database of popular products
+export const EXTERNAL_PRODUCT_DB = {
+  "ФЕП": [],
+  "Інвертор": [
+    "SUN-6K-SG05LP1-EU-AM2-P — Гібридний інвертор DEYE 6kW 48V-battery 2 MPPT Wi-Fi 230V 1 фаза",
+    "SUN-8K-SG05LP1-EU-AM2-P — Гібридний інвертор DEYE 8kW SG05 with wifi, 230V SINGLE PHASE, CE. VDE 1 фаза",
+    "SUN-10K-SG02LP1-EU-AM3 — Гібридний інвертор DEYE 10kW 48V-battery 3 MPPT Wi-Fi 230V 1 фаза",
+    "SUN-12K-SG02LP1-EU-AM3 — Гібридний інвертор DEYE 12kW 48V-battery 3 MPPT Wi-Fi 230V 1 фаза",
+    "SUN-16K-SG01LP1-EU — Гібридний інвертор DEYE 16KW 48V 3 MPPT Wi-Fi 220V 1 фаза",
+    "SUN-18K-SG01LP1-EU-AM3-P — Гібридний інвертор DEYE 18KW 48V 3 MPPT Wi-Fi 220V 1 фаза",
+    "SUN-10K-SG05LP3-EU-SM2 — Гібридний інвертор DEYE 10kW SG05 with wifi, 230V THREE PHASE, CE. VDE Трифазний",
+    "SUN-12K-SG04LP3-EU — Гібридний інвертор DEYE 12kW with wifi, 230V THREE PHASE, CE. VDE Трифазний",
+    "SUN-12K-SG05LP3-EU-SM2 — Гібридний інвертор DEYE 12kW SG05 with wifi, 230V THREE PHASE, CE. VDE Трифазний",
+    "SUN-14K-SG05LP3-EU-SM2 — Гібридний інвертор DEYE SUN-14K-SG05LP3-EU-SM2 14KW 48V 2 MPPT Wi-Fi 220/380V Трифазний",
+    "SUN-15K-SG05LP3-EU-SM2 — Гібридний інвертор DEYE SUN-15K-SG05LP3-EU-SM2 15KW 48V 2 MPPT Wi-Fi 220/380V Трифазний",
+    "SUN-16K-SG05LP3-EU-SM2 — Гібридний інвертор DEYE SUN-16K-SG05LP3-EU-SM2 16KW 48V 2 MPPT Wi-Fi 220/380V Трифазний",
+    "SUN-18K-SG05LP3-EU-SM2 — Гібридний інвертор DEYE SUN-18K-SG05LP3-EU-SM2 18KW 48V 2 MPPT Wi-Fi 220/380V Трифазний",
+    "SUN-20K-SG05LP3-EU-SM2 — Гібридний інвертор DEYE SUN-20K-SG05LP3-EU-SM2 20KW 48V 2 MPPT Wi-Fi 220/380V Трифазний",
+    "SUN-15K-SG01HP3-EU-AM2 — Гібридний інвертор DEYE 15 kW with wifi, 230V THREE PHASE, CE. VDE",
+    "SUN-20K-SG01HP3-EU-AM2 — Гібридний інвертор DEYE 20 kW with wifi, 230V THREE PHASE, CE. VDE",
+    "SUN-10K-G06P3-EU-AM2-P1 — Мережевий інвертор DEYE SUN-10K-G06 10KW 2 MPPT Wi-Fi 220/380V Трифазний",
+    "SUN-15K-G06P3-EU-AM2-P1 — Мережевий інвертор DEYE SUN-15K-G06 15KW 2 MPPT Wi-Fi 220/380V Трифазний",
+    "SUN-18K-G05 — Мережевий інвертор DEYE SUN-18K-G05 18KW 2 MPPT Wi-Fi 220/380V Трифазний",
+    "SUN-20K-G05 — Мережевий інвертор DEYE SUN-20K-G05 20KW 2 MPPT Wi-Fi 220/380V Трифазний",
+    "SUN-25K-G05 — Мережевий інвертор DEYE SUN-25K-G05 25KW 2 MPPT Wi-Fi 220/380V Трифазний",
+    "SUN-30K-G04 — Мережевий інвертор DEYE SUN-30K-G04 30KW 2 MPPT Wi-Fi 220/380V Трифазний",
+    "SUN-35K-G04 — Мережевий інвертор DEYE SUN-35K-G04 35KW 2 MPPT Wi-Fi 220/380V Трифазний",
+    "SUN-45K-G04 — Мережевий інвертор DEYE SUN-45K-G04 45KW 3 MPPT Wi-Fi 220/380V Трифазний",
+    "SUN-50K-G04 — Мережевий інвертор DEYE SUN-50K-G04 50KW 4 MPPT Wi-Fi 220/380V Трифазний",
+    "SUN-60K-G04P3-EU-AM4 — Мережевий інвертор DEYE SUN-60K-G04 60KW 4 MPPT Wi-Fi 220/380V Трифазний",
+    "SUN-80K-G04P3-EU-AM4 — Мережевий інвертор DEYE SUN-80K-G 80KW 4 MPPT Wi-Fi 220/380V Трифазний",
+    "SUN-100K-G03 — Мережевий інвертор DEYE SUN-100K-G03 100KW 6 MPPT Wi-Fi 220/380V Трифазний",
+    "SUN-110K-G03 — Мережевий інвертор DEYE SUN-110K-G03 110KW 6 MPPT Wi-Fi 220/380V Трифазний",
+    "SUN-120K-G01P3-EU — Мережевий інвертор DEYE SUN-120K-G01P3-EU 120KW 8 MPPT Wi-Fi 220/380V Трифазний",
+    "SUN-125K-G01P3-EU — Мережевий інвертор DEYE SUN-125K-G01P3-EU 125KW 8 MPPT Wi-Fi 220/380V Трифазний",
+    "SUN-130K-G01P3-EU-AM8 — Мережевий інвертор DEYE SUN-130K-G01P3-EU 130KW 8 MPPT Wi-Fi 220/380V Трифазний",
+    "SUN-135K-G01P3-EU-AM8 — Мережевий інвертор DEYE SUN-135K-G01P3-EU 135KW 8 MPPT Wi-Fi 220/380V Трифазний",
+    "SUN-25K-SG01HP3-EU — Гібридний інвертор DEYE 25 kW with wifi, 230V THREE PHASE, CE. VDE",
+    "SUN-25K-SG02HP3-EU — Гібридний інвертор DEYE SUN-25K-SG02HP3-EU 220/380V Трифазний",
+    "SUN-30K-SG01HP3-EU-BM3 — Гібридний інвертор DEYE 30 kW with wifi, 230V THREE PHASE, CE. VDE SG01",
+    "SUN-30K-SG02HP3-EU-AM3 — Гібридний інвертор DEYE 30 kW with wifi, 230V THREE PHASE, CE. VDE SG02",
+    "SUN-40K-SG01HP3-EU-BM4 — Гібридний інвертор DEYE 40 kW with wifi, 230V THREE PHASE, CE. VDE",
+    "SUN-50K-SG01HP3-EU-BM4 — Гібридний інвертор DEYE 50 kW with wifi, 230V THREE PHASE, CE. VDE",
+    "SUN-60K-SG02HP3-EU-EM6 — Гібридний інвертор DEYE 60 kW with wifi, 230V THREE PHASE, CE. VDE",
+    "SUN-75K-SG02HP3-EU-EM6 — Гібридний інвертор DEYE 75 kW with wifi, 230V THREE PHASE, CE. VDE",
+    "SUN-80K-SG02HP3-EU-EM6 — Гібридний інвертор DEYE 80 kW with wifi, 230V THREE PHASE, CE. VDE",
+    "Inverter Victron Multiplus 48|3000 GX",
+    "Inverter Victron Easysolar || 48|3000",
+    "Inverter Victron Multiplus 48|5000",
+    "Inverter Victron Multiplus 48|5000 GX",
+    "Inverter Victron Easysolar || 48|5000",
+    "Inverter Victron Multiplus 48|8000",
+    "Inverter Victron Multiplus 48|10000",
+    "Inverter Victron Multiplus 48|15000",
+    "Inverter Victron Quattro 48|5000",
+    "Inverter Victron Quattro 48|8000",
+    "Inverter Victron Quattro 48|10000",
+    "Inverter Victron Quattro 48|15000"
+  ],
+  "АКБ": [
+    "RW-F16 — Акумуляторна батарея DEYE RW-F16 LiFePO4 LV 51.2V 314Ah 14.4kWh (RW-F16)",
+    "SE-F16-С — Акумуляторна батарея DEYE SE-F16-С LiFePO4 LV 51.2V 314Ah 16kWh (SE-F16-С)",
+    "SE-F12-C — Акумуляторна батарея DEYE SE-F12-C LiFePO4 LV 51.2V 230Ah 11.8kWh (SE-F12-C)",
+    "SE-F5 Pro-C — Акумуляторна батарея DEYE SE-F5 Pro LiFePO4 LV 51.2v 100AH 5.12kwh (SE-F5 Pro-C)",
+    "SE-G5.1 Pro-B — Акумуляторна батарея DEYE SE-G5.1 Pro-B LiFePO4 LV 51.2v 100AH 5.12kwh (SE-G5.1 Pro-B)",
+    "BOS-A — Акумуляторна батарея DEYE BOS-A LiFePO4 HV 38.4v 200AH 7.68kwh",
+    "BOS-B — Акумуляторна батарея DEYE BOS-B LiFePO4 HV 51.2V 280Ah 14.3kWh",
+    "BOS-B-Pack16-A3 — Акумуляторна батарея DEYE BOS-B Pro-A3 LiFePO4 HV 51.2V 314Ah 16.08kWh (BOS-B-Pack16-A3)",
+    "BOS-G/BOS-GM5.1-D — Акумуляторна батарея DEYE BOS-G LiFePO4 HV 51.2V 100Ah 5.12kWh no BMS (BOS-G/BOS-GM5.1-D)",
+    "BOS-G-Pack5.1Pro — Акумуляторна батарея DEYE BOS-G PRO LiFePO4 HV 51.2v 100AH 5.12kwh"
+  ],
+  "BMS": [
+    "BOS-A-PDU-2 1000V/160A — BMS для батарей DEYE BOS-A 1000V 160A (BOS-A-PDU-2 1000V/160A)",
+    "BOS-B-PDU-2 — BMS для батарей DEYE BOS-B 200-1000Vdc 168A (BOS-B-PDU-2)",
+    "BOS-B-PDU-2-A — BMS для батарей DEYE BOS-B PRO 200-1000V 180A (BOS-B-PDU-2-A)",
+    "BOS-G-PDU-2 — BMS для батарей DEYE BOS-G PRO 200-1000Vdc 120A (BOS-G-PDU-2)"
+  ],
+  "MPPT контролер": [
+    "Solar Charge Controller MPPT Victron SmartSolar RS 450/200",
+    "Solar Charge Controller MPPT Victron SmartSolar MPPT 250/100-Tr VE.Can",
+    "Solar Charge Controller MPPT Victron SmartSolar MPPT 250/85-Tr VE.Can",
+    "Solar Charge Controller MPPT Victron SmartSolar 250/70-Tr VE.Can",
+    "Solar Charge Controller MPPT Victron SmartSolar 250/60-Tr",
+    "Solar Charge Controller MPPT Victron SmartSolar 150/100-Tr VE.Can",
+    "Solar Charge Controller MPPT Victron SmartSolar 150/60-Tr",
+    "Solar Charge Controller MPPT Victron SmartSolar 150/70-Tr VE.Can",
+    "Solar Charge Controller MPPT Victron SmartSolar 150/45",
+    "Solar Charge Controller MPPT Victron SmartSolar 150/35"
+  ],
+  "Cerbo": [
+    "Cerbo Victron"
+  ],
+  "Стійка": [
+    "3U-HRACK — Стійка для 13 батарей DEYE BOS-G (3U-HRACK)",
+    "3U-LRACK — Стійка для 8 батарей DEYE BOS-G (3U-LRACK)",
+    "BOS-A-Rack14 — Стійка для батарей DEYE BOS-A 14-рівнів (BOS-A-Rack14)",
+    "BOS-A-Rack11 — Стійка для батарей DEYE BOS-A 11-рівнів (BOS-A-Rack11)",
+    "RACK/BOS-B-PRO — Стійка для 15 батарей DEYE BOS-B PRO (RACK/BOS-B-PRO)"
+  ],
+  "Кліматична шафа": [],
+  "Кріплення": [],
+  "Захист PV": [],
+  "Захист AC": [],
+  "Захист DC": [],
+  "Заземлення": [],
+  "Кабель": [],
+  "Інше": []
+};

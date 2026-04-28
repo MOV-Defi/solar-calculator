@@ -1,0 +1,70 @@
+<!DOCTYPE html>
+<html lang="uk">
+<head>
+    <meta charset="UTF-8">
+    <meta http-equiv="X-UA-Compatible" content="IE=edge">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Калькулятор СЕС</title>
+    <link id="main-style" rel="stylesheet" href="./style.css?v=20260424">
+    <script>
+      (function () {
+        var link = document.getElementById('main-style');
+        if (!link) return;
+
+        link.onerror = function () {
+          if (!link.dataset.retry1) {
+            link.dataset.retry1 = '1';
+            link.href = 'style.css?v=20260424';
+            return;
+          }
+          if (!link.dataset.retry2) {
+            link.dataset.retry2 = '1';
+            link.href = '/style.css?v=20260424';
+          }
+        };
+
+        // Windows-safe fallback: fetch CSS and inject as <style>
+        (async function injectCssFallback() {
+          var urls = ['/style.css?v=20260424', './style.css?v=20260424', 'style.css?v=20260424'];
+          for (var i = 0; i < urls.length; i += 1) {
+            try {
+              var res = await fetch(urls[i], { cache: 'no-store' });
+              if (!res.ok) continue;
+              var css = await res.text();
+              if (!css || css.indexOf('--bg-color') === -1) continue;
+              if (!document.getElementById('main-style-inline-fallback')) {
+                var styleTag = document.createElement('style');
+                styleTag.id = 'main-style-inline-fallback';
+                styleTag.textContent = css;
+                document.head.appendChild(styleTag);
+              }
+              break;
+            } catch (e) {}
+          }
+        })();
+      })();
+    </script>
+    <!-- React and Babel -->
+    <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+    <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/exceljs/4.3.0/exceljs.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+    <link rel="manifest" href="manifest.json">
+    <meta name="theme-color" content="#0f172a">
+</head>
+<body class="bg-gray-900 text-white font-sans">
+    <div id="root"></div>
+    <script type="text/babel" data-type="module" src="app.js"></script>
+    <script>
+      if ('serviceWorker' in navigator) {
+        window.addEventListener('load', () => {
+          navigator.serviceWorker.register('./sw.js').catch(err => {
+            console.log('Service Worker registration failed: ', err);
+          });
+        });
+      }
+    </script>
+</body>
+</html>
