@@ -148,27 +148,41 @@ export async function exportToExcelFile({
   groupSettings = {},
   detailLevel = 'summary'
 }) {
-  const isOffer = mode === 'offer';
-  const isFullSpec = detailLevel === 'full';
-  const orderedGroupKeys = buildExportGroupOrder(calculations?.groups || {});
+  try {
+    const isOffer = mode === 'offer';
+    const isFullSpec = detailLevel === 'full';
+    const orderedGroupKeys = buildExportGroupOrder(calculations?.groups || {});
 
-  const workbook = new window.ExcelJS.Workbook();
-  const sheet = workbook.addWorksheet(isOffer ? 'КП' : 'Накладна');
+    if (typeof window.ExcelJS === 'undefined') {
+      throw new Error('Бібліотека ExcelJS не завантажена. Спробуйте оновити сторінку.');
+    }
 
+    const workbook = new window.ExcelJS.Workbook();
+    const sheet = workbook.addWorksheet(isOffer ? 'КП' : 'Накладна');
 
-
-  if (!isOffer) {
-    sheet.getColumn(1).width = 5;
-    sheet.getColumn(2).width = 46;
-    sheet.getColumn(3).width = 8;
-    sheet.getColumn(4).width = 9;
-    sheet.getColumn(5).width = 13;
-    sheet.getColumn(6).width = 14;
-    sheet.getColumn(7).width = 13;
-    sheet.getColumn(8).width = 14;
+    // Налаштування ширини колонок
+    if (!isOffer) {
+      sheet.getColumn(1).width = 5;
+      sheet.getColumn(2).width = 46;
+      sheet.getColumn(3).width = 8;
+      sheet.getColumn(4).width = 9;
+      sheet.getColumn(5).width = 13;
+      sheet.getColumn(6).width = 14;
+      sheet.getColumn(7).width = 13;
+      sheet.getColumn(8).width = 14;
+    } else {
+      sheet.getColumn(1).width = 4;
+      sheet.getColumn(2).width = 45;
+      sheet.getColumn(3).width = 6;
+      sheet.getColumn(4).width = 8;
+      sheet.getColumn(5).width = 10;
+      sheet.getColumn(6).width = 12;
+      sheet.getColumn(7).width = 12;
+      sheet.getColumn(8).width = 14;
+    }
 
     const tryAddLogo = async () => {
-      const paths = ['./SolarLogo3.png', './SolarLogo2.png'];
+      const paths = ['./SolarLogo3.png', './SolarLogo2.png', 'SolarLogo3.png'];
       for (const src of paths) {
         try {
           const resp = await fetch(src, { cache: 'no-store' });
@@ -183,9 +197,12 @@ export async function exportToExcelFile({
             tl: { col: 0, row: 0.25 },
             ext: { width: 250, height: 95 }
           });
-          return;
-        } catch (_) {}
+          return true;
+        } catch (e) {
+          console.warn('Logo load skip:', src);
+        }
       }
+      return false;
     };
 
     await tryAddLogo();
@@ -891,13 +908,17 @@ export async function exportToExcelFile({
   const suffix = isFullSpec ? '_Повна_специфікація' : '_Зведено';
   const fileName = isOffer ? `${baseDocName}_КП${suffix}.xlsx` : `${baseDocName}_Накладна${suffix}.xlsx`;
 
-  await saveToDiskUtility(
-    workspaceHandle,
-    clientInfo,
-    calculations,
-    fileName,
-    blob,
-    isOffer ? 'Excel КП' : 'Excel Накладна',
-    projectFolderName
-  );
+    await saveToDiskUtility(
+      workspaceHandle,
+      clientInfo,
+      calculations,
+      fileName,
+      blob,
+      isOffer ? 'Excel КП' : 'Excel Накладна',
+      projectFolderName
+    );
+  } catch (err) {
+    console.error('Excel Export Error:', err);
+    alert(`Помилка при створенні Excel: ${err.message}`);
+  }
 }

@@ -5,6 +5,9 @@ async function ensureReadWritePermission(handle) {
   try {
     const current = await handle.queryPermission(options);
     if (current === 'granted') return true;
+    
+    // On Windows, the prompt might be blocked if not triggered by direct user action.
+    // We only call requestPermission here, assuming it's part of a user-triggered flow.
     const requested = await handle.requestPermission(options);
     return requested === 'granted';
   } catch (error) {
@@ -82,28 +85,28 @@ export async function saveToDiskUtility(workspaceHandle, clientInfo, calculation
   };
 
   if (workspaceHandle) {
-    const hasWorkspacePermission = await ensureReadWritePermission(workspaceHandle);
-    if (!hasWorkspacePermission) {
-      return fallbackToDownload('немає доступу до робочої папки');
-    }
-
-    const safeFolderInput = (projectFolderName || '').trim();
-    const address = clientInfo.address || 'Невідомо';
-    const stationPowerW = Number(calculations.stationPowerW) || 0;
-    const power = stationPowerW > 0 ? (stationPowerW / 1000).toFixed(1) + 'кВт' : '0кВт';
-    
-    const rawFolderName = safeFolderInput || `${address}_${power}`;
-    const folderName = sanitizeFileName(rawFolderName);
-
     try {
-      const dirHandle = await workspaceHandle.getDirectoryHandle(folderName, { create: true });
-      const hasDirPermission = await ensureReadWritePermission(dirHandle);
-      if (!hasDirPermission) {
-        return fallbackToDownload('немає доступу до папки проєкту');
+      const hasWorkspacePermission = await ensureReadWritePermission(workspaceHandle);
+      if (!hasWorkspacePermission) {
+        return fallbackToDownload('немає доступу до робочої папки');
       }
+
+      const safeFolderInput = (projectFolderName || '').trim();
+      const address = clientInfo.address || 'Невідомо';
+      const stationPowerW = Number(calculations.stationPowerW) || 0;
+      const power = stationPowerW > 0 ? (stationPowerW / 1000).toFixed(1) + 'кВт' : '0кВт';
+      
+      const rawFolderName = safeFolderInput || `${address}_${power}`;
+      const folderName = sanitizeFileName(rawFolderName);
+
+      const dirHandle = await workspaceHandle.getDirectoryHandle(folderName, { create: true });
+      
+      // Small delay for Windows to handle new directory creation
+      await new Promise(r => setTimeout(r, 100));
 
       const resolvedName = await getVersionedFileName(dirHandle, sanitizeFileName(fileName));
       const fileHandle = await dirHandle.getFileHandle(resolvedName, { create: true });
+      
       const writable = await fileHandle.createWritable();
       await writable.write(blob);
       await writable.close();
@@ -118,7 +121,7 @@ export async function saveToDiskUtility(workspaceHandle, clientInfo, calculation
       };
     } catch (error) {
       console.error('File save error', error);
-      return fallbackToDownload('не вдалося записати у робочу папку');
+      return fallbackToDownload('помилка доступу до диска');
     }
   }
 
@@ -158,9 +161,6 @@ export async function writeWorkspaceJson(workspaceHandle, relativePath, data) {
     const fileName = sanitizeFileName(rawFileName);
     const dirPath = parts.join('/');
     const dirHandle = dirPath ? await getNestedDirectoryHandle(workspaceHandle, dirPath, true) : workspaceHandle;
-    const hasDirPermission = await ensureReadWritePermission(dirHandle);
-    if (!hasDirPermission) return false;
-
     const fileHandle = await dirHandle.getFileHandle(fileName, { create: true });
     const writable = await fileHandle.createWritable();
     await writable.write(JSON.stringify(data, null, 2));

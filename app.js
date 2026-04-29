@@ -1314,22 +1314,27 @@ function App() {
   };
 
   const exportToExcel = async (mode = 'offer', detailLevel = 'summary') => {
-    await exportToExcelFile({
-      mode,
-      clientInfo,
-      rates: {
-        eur: toNumber(rates.eur, 0),
-        usd: toNumber(rates.usd, 0)
-      },
-      modulePower,
-      calculations,
-      installPercent,
-      managerCommissionRate,
-      workspaceHandle,
-      projectFolderName,
-      groupSettings,
-      detailLevel
-    });
+    try {
+      await exportToExcelFile({
+        mode,
+        clientInfo,
+        rates: {
+          eur: toNumber(rates.eur, 0),
+          usd: toNumber(rates.usd, 0)
+        },
+        modulePower,
+        calculations,
+        installPercent,
+        managerCommissionRate,
+        workspaceHandle,
+        projectFolderName,
+        groupSettings,
+        detailLevel
+      });
+    } catch (err) {
+      console.error('Export trigger error', err);
+      alert('Помилка запуску експорту Excel. Перевірте консоль браузера.');
+    }
   };
 
   const exportToPdf = async () => {
