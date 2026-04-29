@@ -1,6 +1,6 @@
-import { saveToDiskUtility } from './fileSystem.js';
+// Uses global saveToDiskUtility from fileSystem.js
 
-export async function exportToPdfFile({
+async function exportToPdfFile({
   printMode,
   clientInfo,
   calculations,
@@ -34,3 +34,5 @@ export async function exportToPdfFile({
   
   await saveToDiskUtility(workspaceHandle, clientInfo, calculations, fileName, pdfBlob, typeLabel, projectFolderName);
 }
+
+window.exportToPdfFile = exportToPdfFile;

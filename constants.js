@@ -1,6 +1,6 @@
-export const UNITS = ["шт.", "м.п.", "компл", "кВт"];
+const UNITS = ["шт.", "м.п.", "компл", "кВт"];
 
-export const INITIAL_GROUPS = {
+const INITIAL_GROUPS = {
   "Основне обладнання": [
     { id: 1, type: "ФЕП", name: "Сонячна панель 550W", unit: "шт.", quantity: 1, price: 0, currency: "USD", incomingPrice: 0, power: 550 },
     { id: 2, type: "Інвертор", name: "Мережевий інвертор", unit: "шт.", quantity: 1, price: 0, currency: "USD", incomingPrice: 0 },
@@ -43,7 +43,7 @@ export const INITIAL_GROUPS = {
 };
 
 // Pre-defined database of popular products
-export const EXTERNAL_PRODUCT_DB = {
+const EXTERNAL_PRODUCT_DB = {
   "ФЕП": [],
   "Інвертор": [
     "SUN-6K-SG05LP1-EU-AM2-P — Гібридний інвертор DEYE 6kW 48V-battery 2 MPPT Wi-Fi 230V 1 фаза",

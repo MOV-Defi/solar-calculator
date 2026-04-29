@@ -2673,7 +2673,7 @@ button.secondary:hover {
   margin-bottom: 0;
   overflow-y: auto;
   overflow-x: visible;
-  z-index: 100;
+  z-index: 2000;
 }
 
 .layout-sidebar .top-shell .top-shell-main {
@@ -2956,6 +2956,39 @@ button.secondary:hover {
 
 .menu-collapsed .top-shell button[data-title]:hover::after {
   opacity: 1;
+  visibility: visible;
+}
+
+/* Tooltips for classic mode (always show if data-title exists, even if not collapsed) */
+.layout-classic .top-shell button[data-title] {
+  position: relative;
+}
+
+.layout-classic .top-shell button[data-title]::after {
+  content: attr(data-title);
+  position: absolute;
+  background: rgba(15, 23, 42, 0.98);
+  color: #e2e8f0;
+  border: 1px solid rgba(148, 163, 184, 0.45);
+  border-radius: 7px;
+  padding: 0.35rem 0.6rem;
+  font-size: 0.75rem;
+  white-space: nowrap;
+  pointer-events: none;
+  opacity: 0;
+  visibility: hidden;
+  transition: all 0.15s ease;
+  z-index: 9999;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
+  left: 50%;
+  top: calc(100% + 10px);
+  transform: translateX(-50%) translateY(-5px);
+}
+
+.layout-classic .top-shell button[data-title]:hover::after {
+  opacity: 1;
+  visibility: visible;
+  transform: translateX(-50%) translateY(0);
 }
 
 /* Position: Below for Top Menu (Classic) */
@@ -2973,8 +3006,9 @@ button.secondary:hover {
 }
 
 .menu-collapsed.layout-sidebar .top-shell {
-  width: 70px;
+  width: 122px;
   padding: 0.8rem;
+  overflow: visible !important; /* CRITICAL: Allow tooltips to show outside the sidebar */
 }
 
 .menu-collapsed.layout-sidebar .top-shell .top-meta {
@@ -3049,7 +3083,7 @@ button.secondary:hover {
 /* Collapsed mode keeps buttons visible (compact), does not hide whole menu */
 .menu-collapsed.layout-sidebar .top-shell {
   width: 122px;
-  overflow-x: visible;
+  overflow: visible !important;
 }
 
 .menu-collapsed.layout-sidebar .top-shell .sidebar-menu-title,

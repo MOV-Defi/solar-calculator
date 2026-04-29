@@ -1,9 +1,6 @@
-const { useState, useMemo, useEffect, useRef } = React;
+// Imports removed, using global variables from index.html scripts
 
-import { UNITS, INITIAL_GROUPS, EXTERNAL_PRODUCT_DB } from './constants.js';
-import { exportToExcelFile } from './exportExcel.js';
-import { exportToPdfFile } from './exportPdf.js';
-import { saveToDiskUtility, readWorkspaceJson, writeWorkspaceJson } from './fileSystem.js';
+const { useState, useMemo, useEffect, useRef } = React;
 
 const expandableGroups = ["Захист PV", "Захист AC", "Захист DC", "Кріплення"];
 const MAIN_TYPES = ["Інвертор", "ФЕП", "АКБ", "BMS", "MPPT контролер", "Cerbo", "Кліматична шафа", "Стійка", "Інше"];
@@ -13,7 +10,8 @@ const GROUNDING_TYPES = ["Заземлення", "Інше"];
 const CABLE_TYPES = ["Кабель", "Інше"];
 const PROJECT_TYPES = {
   project: "Проєктний",
-  commercial: "Комерційний"
+  commercial: "Комерційний",
+  product: "Товарний"
 };
 const PV_TEMPLATE_TYPES = ["Стандарт", "Victron", "Інше"];
 const MOUNTING_TEMPLATE_TYPES = [
@@ -1293,11 +1291,23 @@ function App() {
     if (type === 'commercial') {
       setWorkItems(createCommercialWorkItems());
       setOtherExpenses([]);
+      setInstallPercent(15);
+    } else if (type === 'product') {
+      setWorkItems([]);
+      setOtherExpenses(cloneList(DEFAULT_OTHER_EXPENSES));
+      setInstallPercent(0);
+      const prodSettings = createDefaultGroupSettings();
+      // In product mode we only want Main Equipment by default
+      Object.keys(prodSettings).forEach(k => {
+        if (k !== "Основне обладнання") delete prodSettings[k];
+      });
+      setGroupSettings(prodSettings);
+      setEquipmentGroups({ "Основне обладнання": [] });
     } else {
       setWorkItems(cloneList(DEFAULT_WORK_ITEMS));
       setOtherExpenses(cloneList(DEFAULT_OTHER_EXPENSES));
+      setInstallPercent(15);
     }
-    setInstallPercent(15);
     setManagerCommissionRate(10);
     setClientDiscountPercent(0);
     setAutoMountingQuantity(true);
@@ -1317,6 +1327,7 @@ function App() {
     try {
       await exportToExcelFile({
         mode,
+        projectType,
         clientInfo,
         rates: {
           eur: toNumber(rates.eur, 0),
@@ -2253,7 +2264,7 @@ function App() {
         <div className="top-shell-main">
           <div className="top-meta">
             {isSidebarLayout && <div className="sidebar-badge">Solar CRM</div>}
-            <h1>Калькулятор СЕС v3.0</h1>
+            <h1>Калькулятор СЕС v3.1</h1>
             <div style={{fontSize: '0.92rem', color: 'var(--text-muted)', marginTop: '0.25rem'}}>
               Тип поточного проєкту: <strong style={{color: 'var(--accent-yellow)'}}>{PROJECT_TYPES[projectType] || PROJECT_TYPES.commercial}</strong>
             </div>
@@ -2404,7 +2415,13 @@ function App() {
           </div>
         </div>
         <table>
-          {["Основне обладнання", "ЗАХИСТ", "Кріплення", "Кабельна продукція", "Заземлення", "Інші групи"].map(sectionKey => {
+          {(() => {
+            const allSections = ["Основне обладнання", "ЗАХИСТ", "Кріплення", "Кабельна продукція", "Заземлення", "Інші групи"];
+            if (projectType === 'product') {
+              return ["Основне обладнання", "Інші групи"];
+            }
+            return allSections;
+          })().map(sectionKey => {
             if (sectionKey === "ЗАХИСТ") {
               // Dynamically find all groups that belong to the Protection section
               // This includes the default ones and any custom ones the user might have named starting with "Захист"
@@ -2904,149 +2921,152 @@ function App() {
         </table>
       </div>
 
-      {projectType === 'commercial' ? (
-      <div className="card table-container" style={{padding: '0'}}>
-        <div className="flex justify-between items-center" style={{padding: '1.5rem', paddingBottom: '1rem'}}>
-          <h2 style={{margin: 0}}>Монтаж та запуск станції (Комерційний шаблон)</h2>
-          <button type="button" className="secondary" onClick={() => addItem(setWorkItems, "Нова робота / витрата")}>+ Додати позицію</button>
-        </div>
-        <div className="flex" style={{gap: '1rem', padding: '0 1.5rem 1.5rem'}}>
-          <div style={{flex: 1}}>
-            <table style={{border: '1px solid var(--border-color)'}}>
-              <thead>
-                <tr style={{backgroundColor: '#1E1E1E'}}>
-                  <th className="col-name text-left">Найменування робіт / витрат</th>
-                  <th className="col-qty text-right">Кіл-ть</th>
-                  <th className="col-currency text-center">Вал.</th>
-                  <th className="col-price text-right">Ціна (од)</th>
-                  <th className="col-price text-right">Ціна (₴)</th>
-                  <th className="col-readonly text-right">Сума ($)</th>
-                  <th className="col-readonly text-right">Сума (₴)</th>
-                  <th className="col-price text-right internal-only">Собів. ($)</th>
-                  <th className="col-markup text-right">Націнка %</th>
-                  <th className="col-readonly text-right internal-only">Маржа ($)</th>
-                  <th style={{width: '50px'}}></th>
-                </tr>
-              </thead>
-              <tbody>
-                {calculations.processedWorkItems.map(it => (
-                  <tr key={it.id}>
-                    <td><input type="text" className="equipment-name-input" value={it.name} onChange={(e) => updateList(workItems, setWorkItems, it.id, 'name', e.target.value)} placeholder="Назва роботи / витрати" /></td>
-                    <td><input type="number" className="text-right" value={it.quantity} onChange={(e) => updateList(workItems, setWorkItems, it.id, 'quantity', e.target.value)} /></td>
-                    <td className="col-currency">
-                      <select value={it.currency} onChange={(e) => updateList(workItems, setWorkItems, it.id, 'currency', e.target.value)}>
-                        <option value="USD">$</option><option value="EUR">€</option><option value="UAH">₴</option>
-                      </select>
-                    </td>
-                    <td><input type="number" className="text-right" value={it.price} onChange={(e) => updateList(workItems, setWorkItems, it.id, 'price', e.target.value)} /></td>
-                    <td className="text-right font-bold col-readonly">₴{formatMoney(it.priceUah)}</td>
-                    <td className="text-right font-bold text-blue col-readonly">${formatMoney(it.sumUsd)}</td>
-                    <td className="text-right font-bold text-blue col-readonly">₴{formatMoney(it.sumUah)}</td>
-                    <td className="internal-only"><input type="number" className="text-right" value={it.incomingPrice || 0} onChange={(e) => updateList(workItems, setWorkItems, it.id, 'incomingPrice', e.target.value)} /></td>
-                    <td><input type="number" className="text-right" value={roundMarkupForInput(it.markupPercent)} onChange={(e) => updateList(workItems, setWorkItems, it.id, 'markupPercent', e.target.value)} /></td>
-                    <td className="text-right font-bold text-yellow col-readonly internal-only">${formatMoney((it.sumUsd || 0) - (it.costUsd || 0))}</td>
-                    <td className="text-center"><button type="button" className="danger" onClick={() => removeItem(setWorkItems, it.id)}>✕</button></td>
-                  </tr>
-                ))}
-                <tr className="group-summary-row">
-                   <td colSpan="6" className="text-right font-bold">Всього за монтажем та запуском:</td>
-                   <td className="text-right font-bold text-blue">${formatMoney(calculations.workItemsSumUsd)}</td>
-                   <td className="text-right font-bold text-blue">₴{formatMoney(calculations.workItemsSumUah)}</td>
-                   <td className="text-right font-bold internal-only">${formatMoney(calculations.workItemsCostUsd || 0)}</td>
-                   <td></td>
-                   <td className="text-right font-bold text-yellow internal-only">${formatMoney(calculations.workItemsMarginUsd || 0)}</td>
-                   <td></td>
-                </tr>
-              </tbody>
-            </table>
+      {projectType === 'commercial' && (
+        <div className="card table-container" style={{padding: '0'}}>
+          <div className="flex justify-between items-center" style={{padding: '1.5rem', paddingBottom: '1rem'}}>
+            <h2 style={{margin: 0}}>Монтаж та запуск станції (Комерційний шаблон)</h2>
+            <button type="button" className="secondary" onClick={() => addItem(setWorkItems, "Нова робота / витрата")}>+ Додати позицію</button>
           </div>
-          <div className="input-group" style={{minWidth: '250px', background: 'rgba(59, 130, 246, 0.05)', padding: '1.5rem', borderRadius: '8px', border: '1px solid rgba(59, 130, 246, 0.2)'}}>
-            <label style={{color: 'var(--accent-blue)', fontWeight: 'bold'}}>Додатковий % за монтаж</label>
-            <div style={{fontSize: '0.75rem', color: 'var(--text-muted)', marginBottom: '0.5rem'}}>(від вартості обладнання)</div>
-            <div className="flex items-center" style={{gap: '1rem'}}>
-              <input type="number" style={{width: '80px', fontSize: '1.2rem', fontWeight: 'bold'}} value={installPercent} onChange={(e) => setInstallPercent(parseNumberInput(e.target.value))} />
-              <div style={{flex: 1}}>
-                <div className="font-bold text-blue" style={{fontSize: '1.2rem'}}>${formatMoney(installPercentOnlyUsd)}</div>
-                <div style={{fontSize: '0.85rem', color: 'var(--text-muted)'}}>₴{formatMoney(installPercentOnlyUah)}</div>
+          <div className="flex" style={{gap: '1rem', padding: '0 1.5rem 1.5rem'}}>
+            <div style={{flex: 1}}>
+              <table style={{border: '1px solid var(--border-color)'}}>
+                <thead>
+                  <tr style={{backgroundColor: '#1E1E1E'}}>
+                    <th className="col-name text-left">Найменування робіт / витрат</th>
+                    <th className="col-qty text-right">Кіл-ть</th>
+                    <th className="col-currency text-center">Вал.</th>
+                    <th className="col-price text-right">Ціна (од)</th>
+                    <th className="col-price text-right">Ціна (₴)</th>
+                    <th className="col-readonly text-right">Сума ($)</th>
+                    <th className="col-readonly text-right">Сума (₴)</th>
+                    <th className="col-price text-right internal-only">Собів. ($)</th>
+                    <th className="col-markup text-right">Націнка %</th>
+                    <th className="col-readonly text-right internal-only">Маржа ($)</th>
+                    <th style={{width: '50px'}}></th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {calculations.processedWorkItems.map(it => (
+                    <tr key={it.id}>
+                      <td><input type="text" className="equipment-name-input" value={it.name} onChange={(e) => updateList(workItems, setWorkItems, it.id, 'name', e.target.value)} placeholder="Назва роботи / витрати" /></td>
+                      <td><input type="number" className="text-right" value={it.quantity} onChange={(e) => updateList(workItems, setWorkItems, it.id, 'quantity', e.target.value)} /></td>
+                      <td className="col-currency">
+                        <select value={it.currency} onChange={(e) => updateList(workItems, setWorkItems, it.id, 'currency', e.target.value)}>
+                          <option value="USD">$</option><option value="EUR">€</option><option value="UAH">₴</option>
+                        </select>
+                      </td>
+                      <td><input type="number" className="text-right" value={it.price} onChange={(e) => updateList(workItems, setWorkItems, it.id, 'price', e.target.value)} /></td>
+                      <td className="text-right font-bold col-readonly">₴{formatMoney(it.priceUah)}</td>
+                      <td className="text-right font-bold text-blue col-readonly">${formatMoney(it.sumUsd)}</td>
+                      <td className="text-right font-bold text-blue col-readonly">₴{formatMoney(it.sumUah)}</td>
+                      <td className="internal-only"><input type="number" className="text-right" value={it.incomingPrice || 0} onChange={(e) => updateList(workItems, setWorkItems, it.id, 'incomingPrice', e.target.value)} /></td>
+                      <td><input type="number" className="text-right" value={roundMarkupForInput(it.markupPercent)} onChange={(e) => updateList(workItems, setWorkItems, it.id, 'markupPercent', e.target.value)} /></td>
+                      <td className="text-right font-bold text-yellow col-readonly internal-only">${formatMoney((it.sumUsd || 0) - (it.costUsd || 0))}</td>
+                      <td className="text-center"><button type="button" className="danger" onClick={() => removeItem(setWorkItems, it.id)}>✕</button></td>
+                    </tr>
+                  ))}
+                  <tr className="group-summary-row">
+                     <td colSpan="6" className="text-right font-bold">Всього за монтажем та запуском:</td>
+                     <td className="text-right font-bold text-blue">${formatMoney(calculations.workItemsSumUsd)}</td>
+                     <td className="text-right font-bold text-blue">₴{formatMoney(calculations.workItemsSumUah)}</td>
+                     <td className="text-right font-bold internal-only">${formatMoney(calculations.workItemsCostUsd || 0)}</td>
+                     <td></td>
+                     <td className="text-right font-bold text-yellow internal-only">${formatMoney(calculations.workItemsMarginUsd || 0)}</td>
+                     <td></td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+            <div className="input-group" style={{minWidth: '250px', background: 'rgba(59, 130, 246, 0.05)', padding: '1.5rem', borderRadius: '8px', border: '1px solid rgba(59, 130, 246, 0.2)'}}>
+              <label style={{color: 'var(--accent-blue)', fontWeight: 'bold'}}>Додатковий % за монтаж</label>
+              <div style={{fontSize: '0.75rem', color: 'var(--text-muted)', marginBottom: '0.5rem'}}>(від вартості обладнання)</div>
+              <div className="flex items-center" style={{gap: '1rem'}}>
+                <input type="number" style={{width: '80px', fontSize: '1.2rem', fontWeight: 'bold'}} value={installPercent} onChange={(e) => setInstallPercent(parseNumberInput(e.target.value))} />
+                <div style={{flex: 1}}>
+                  <div className="font-bold text-blue" style={{fontSize: '1.2rem'}}>${formatMoney(installPercentOnlyUsd)}</div>
+                  <div style={{fontSize: '0.85rem', color: 'var(--text-muted)'}}>₴{formatMoney(installPercentOnlyUah)}</div>
+                </div>
               </div>
-            </div>
-            <div style={{marginTop: '0.9rem', borderTop: '1px solid rgba(59, 130, 246, 0.2)', paddingTop: '0.8rem'}}>
-              <div style={{fontSize: '0.78rem', color: 'var(--text-muted)'}}>Частка блоку монтаж/запуск від вартості товару</div>
-              <div className="font-bold" style={{fontSize: '1.1rem', color: 'var(--accent-yellow)'}}>{commercialServicePercent.toFixed(1)}%</div>
-            </div>
-          </div>
-        </div>
-      </div>
-      ) : (
-      <>
-      <div className="card table-container" style={{padding: '0'}}>
-        <div className="flex justify-between items-center" style={{padding: '1.5rem', paddingBottom: '1rem'}}>
-          <h2 style={{margin: 0}}>Монтажні роботи</h2>
-          <button type="button" className="secondary" onClick={() => addItem(setWorkItems, "Новий вид робіт")}>+ Додати роботу</button>
-        </div>
-        <div className="flex" style={{gap: '1rem', padding: '0 1.5rem 1.5rem'}}>
-          <div style={{flex: 1}}>
-            <table style={{border: '1px solid var(--border-color)'}}>
-              <thead>
-                <tr style={{backgroundColor: '#1E1E1E'}}>
-                  <th className="col-name text-left">Найменування робіт</th>
-                  <th className="col-qty text-right">Кіл-ть</th>
-                  <th className="col-currency text-center">Вал.</th>
-                  <th className="col-price text-right">Ціна (од)</th>
-                  <th className="col-price text-right">Ціна (₴)</th>
-                  <th className="col-readonly text-right">Сума ($)</th>
-                  <th className="col-readonly text-right">Сума (₴)</th>
-                  <th className="col-price text-right internal-only">Собів. ($)</th>
-                  <th className="col-markup text-right">Націнка %</th>
-                  <th className="col-readonly text-right internal-only">Маржа ($)</th>
-                  <th style={{width: '50px'}}></th>
-                </tr>
-              </thead>
-              <tbody>
-                {calculations.processedWorkItems.map(it => (
-                  <tr key={it.id}>
-                    <td><input type="text" className="equipment-name-input" value={it.name} onChange={(e) => updateList(workItems, setWorkItems, it.id, 'name', e.target.value)} placeholder="Назва робіт" /></td>
-                    <td><input type="number" className="text-right" value={it.quantity} onChange={(e) => updateList(workItems, setWorkItems, it.id, 'quantity', e.target.value)} /></td>
-                    <td className="col-currency">
-                      <select value={it.currency} onChange={(e) => updateList(workItems, setWorkItems, it.id, 'currency', e.target.value)}>
-                        <option value="USD">$</option><option value="EUR">€</option><option value="UAH">₴</option>
-                      </select>
-                    </td>
-                    <td><input type="number" className="text-right" value={it.price} onChange={(e) => updateList(workItems, setWorkItems, it.id, 'price', e.target.value)} /></td>
-                    <td className="text-right font-bold col-readonly">₴{formatMoney(it.priceUah)}</td>
-                    <td className="text-right font-bold text-blue col-readonly">${formatMoney(it.sumUsd)}</td>
-                    <td className="text-right font-bold text-blue col-readonly">₴{formatMoney(it.sumUah)}</td>
-                    <td className="internal-only"><input type="number" className="text-right" value={it.incomingPrice || 0} onChange={(e) => updateList(workItems, setWorkItems, it.id, 'incomingPrice', e.target.value)} /></td>
-                    <td><input type="number" className="text-right" value={roundMarkupForInput(it.markupPercent)} onChange={(e) => updateList(workItems, setWorkItems, it.id, 'markupPercent', e.target.value)} /></td>
-                    <td className="text-right font-bold text-yellow col-readonly internal-only">${formatMoney((it.sumUsd || 0) - (it.costUsd || 0))}</td>
-                    <td className="text-center"><button type="button" className="danger" onClick={() => removeItem(setWorkItems, it.id)}>✕</button></td>
-                  </tr>
-                ))}
-                <tr className="group-summary-row">
-                   <td colSpan="6" className="text-right font-bold">Всього за роботами:</td>
-                   <td className="text-right font-bold text-blue">${formatMoney(calculations.workItemsSumUsd)}</td>
-                   <td className="text-right font-bold text-blue">₴{formatMoney(calculations.workItemsSumUah)}</td>
-                   <td className="text-right font-bold internal-only">${formatMoney(calculations.workItemsCostUsd || 0)}</td>
-                   <td></td>
-                   <td className="text-right font-bold text-yellow internal-only">${formatMoney(calculations.workItemsMarginUsd || 0)}</td>
-                   <td></td>
-                </tr>
-              </tbody>
-            </table>
-          </div>
-          <div className="input-group" style={{minWidth: '250px', background: 'rgba(59, 130, 246, 0.05)', padding: '1.5rem', borderRadius: '8px', border: '1px solid rgba(59, 130, 246, 0.2)'}}>
-            <label style={{color: 'var(--accent-blue)', fontWeight: 'bold'}}>Додатковий % за монтаж</label>
-            <div style={{fontSize: '0.75rem', color: 'var(--text-muted)', marginBottom: '0.5rem'}}>(від вартості обладнання)</div>
-            <div className="flex items-center" style={{gap: '1rem'}}>
-              <input type="number" style={{width: '80px', fontSize: '1.2rem', fontWeight: 'bold'}} value={installPercent} onChange={(e) => setInstallPercent(parseNumberInput(e.target.value))} />
-              <div style={{flex: 1}}>
-                <div className="font-bold text-blue" style={{fontSize: '1.2rem'}}>${formatMoney(installPercentOnlyUsd)}</div>
-                <div style={{fontSize: '0.85rem', color: 'var(--text-muted)'}}>₴{formatMoney(installPercentOnlyUah)}</div>
+              <div style={{marginTop: '0.9rem', borderTop: '1px solid rgba(59, 130, 246, 0.2)', paddingTop: '0.8rem'}}>
+                <div style={{fontSize: '0.78rem', color: 'var(--text-muted)'}}>Частка блоку монтаж/запуск від вартості товару</div>
+                <div className="font-bold" style={{fontSize: '1.1rem', color: 'var(--accent-yellow)'}}>{commercialServicePercent.toFixed(1)}%</div>
               </div>
             </div>
           </div>
         </div>
-      </div>
+      )}
+
+      {projectType === 'project' && (
+        <div className="card table-container" style={{padding: '0'}}>
+          <div className="flex justify-between items-center" style={{padding: '1.5rem', paddingBottom: '1rem'}}>
+            <h2 style={{margin: 0}}>Монтажні роботи</h2>
+            <button type="button" className="secondary" onClick={() => addItem(setWorkItems, "Новий вид робіт")}>+ Додати роботу</button>
+          </div>
+          <div className="flex" style={{gap: '1rem', padding: '0 1.5rem 1.5rem'}}>
+            <div style={{flex: 1}}>
+              <table style={{border: '1px solid var(--border-color)'}}>
+                <thead>
+                  <tr style={{backgroundColor: '#1E1E1E'}}>
+                    <th className="col-name text-left">Найменування робіт</th>
+                    <th className="col-qty text-right">Кіл-ть</th>
+                    <th className="col-currency text-center">Вал.</th>
+                    <th className="col-price text-right">Ціна (од)</th>
+                    <th className="col-price text-right">Ціна (₴)</th>
+                    <th className="col-readonly text-right">Сума ($)</th>
+                    <th className="col-readonly text-right">Сума (₴)</th>
+                    <th className="col-price text-right internal-only">Собів. ($)</th>
+                    <th className="col-markup text-right">Націнка %</th>
+                    <th className="col-readonly text-right internal-only">Маржа ($)</th>
+                    <th style={{width: '50px'}}></th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {calculations.processedWorkItems.map(it => (
+                    <tr key={it.id}>
+                      <td><input type="text" className="equipment-name-input" value={it.name} onChange={(e) => updateList(workItems, setWorkItems, it.id, 'name', e.target.value)} placeholder="Назва робіт" /></td>
+                      <td><input type="number" className="text-right" value={it.quantity} onChange={(e) => updateList(workItems, setWorkItems, it.id, 'quantity', e.target.value)} /></td>
+                      <td className="col-currency">
+                        <select value={it.currency} onChange={(e) => updateList(workItems, setWorkItems, it.id, 'currency', e.target.value)}>
+                          <option value="USD">$</option><option value="EUR">€</option><option value="UAH">₴</option>
+                        </select>
+                      </td>
+                      <td><input type="number" className="text-right" value={it.price} onChange={(e) => updateList(workItems, setWorkItems, it.id, 'price', e.target.value)} /></td>
+                      <td className="text-right font-bold col-readonly">₴{formatMoney(it.priceUah)}</td>
+                      <td className="text-right font-bold text-blue col-readonly">${formatMoney(it.sumUsd)}</td>
+                      <td className="text-right font-bold text-blue col-readonly">₴{formatMoney(it.sumUah)}</td>
+                      <td className="internal-only"><input type="number" className="text-right" value={it.incomingPrice || 0} onChange={(e) => updateList(workItems, setWorkItems, it.id, 'incomingPrice', e.target.value)} /></td>
+                      <td><input type="number" className="text-right" value={roundMarkupForInput(it.markupPercent)} onChange={(e) => updateList(workItems, setWorkItems, it.id, 'markupPercent', e.target.value)} /></td>
+                      <td className="text-right font-bold text-yellow col-readonly internal-only">${formatMoney((it.sumUsd || 0) - (it.costUsd || 0))}</td>
+                      <td className="text-center"><button type="button" className="danger" onClick={() => removeItem(setWorkItems, it.id)}>✕</button></td>
+                    </tr>
+                  ))}
+                  <tr className="group-summary-row">
+                     <td colSpan="6" className="text-right font-bold">Всього за роботами:</td>
+                     <td className="text-right font-bold text-blue">${formatMoney(calculations.workItemsSumUsd)}</td>
+                     <td className="text-right font-bold text-blue">₴{formatMoney(calculations.workItemsSumUah)}</td>
+                     <td className="text-right font-bold internal-only">${formatMoney(calculations.workItemsCostUsd || 0)}</td>
+                     <td></td>
+                     <td className="text-right font-bold text-yellow internal-only">${formatMoney(calculations.workItemsMarginUsd || 0)}</td>
+                     <td></td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+            <div className="input-group" style={{minWidth: '250px', background: 'rgba(59, 130, 246, 0.05)', padding: '1.5rem', borderRadius: '8px', border: '1px solid rgba(59, 130, 246, 0.2)'}}>
+              <label style={{color: 'var(--accent-blue)', fontWeight: 'bold'}}>Додатковий % за монтаж</label>
+              <div style={{fontSize: '0.75rem', color: 'var(--text-muted)', marginBottom: '0.5rem'}}>(від вартості обладнання)</div>
+              <div className="flex items-center" style={{gap: '1rem'}}>
+                <input type="number" style={{width: '80px', fontSize: '1.2rem', fontWeight: 'bold'}} value={installPercent} onChange={(e) => setInstallPercent(parseNumberInput(e.target.value))} />
+                <div style={{flex: 1}}>
+                  <div className="font-bold text-blue" style={{fontSize: '1.2rem'}}>${formatMoney(installPercentOnlyUsd)}</div>
+                  <div style={{fontSize: '0.85rem', color: 'var(--text-muted)'}}>₴{formatMoney(installPercentOnlyUah)}</div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
       <div className="card table-container" style={{padding: '0'}}>
         <div className="flex justify-between items-center" style={{padding: '1.5rem', paddingBottom: '1rem'}}>
           <h2 style={{margin: 0}}>Інші витрати (Логістика / ПММ)</h2>
@@ -3102,8 +3122,6 @@ function App() {
           </table>
         </div>
       </div>
-      </>
-      )}
 
       <div className="card">
         <div className="grid grid-cols-2" style={{gap: '3rem'}}>
@@ -3135,41 +3153,43 @@ function App() {
               </div>
               
               {/* БЛОК РОБІТ */}
-              <div className="summary-block" style={{background: 'rgba(30, 41, 59, 0.5)', borderRadius: '8px', padding: '1rem', marginBottom: '1.5rem', border: '1px solid rgba(148, 163, 184, 0.1)'}}>
-                <div style={{fontSize: '0.9rem', textTransform: 'uppercase', letterSpacing: '0.05em', color: '#94a3b8', marginBottom: '0.75rem', fontWeight: 'bold'}}>🛠️ РОБОТИ ТА ПОСЛУГИ</div>
-                
-                {toNumber(installPercent, 0) > 0 && (
-                  <div className="flex justify-between py-1" style={{fontSize: '0.95rem', opacity: 0.9}}>
-                    <span>Монтаж та запуск ({toNumber(installPercent, 0)}%):</span>
-                    <span className="font-bold">${formatMoney(calculations.sums.installPercentAmountUsd)}</span>
+                {calculations.sums.installationTotalUsd > 0 && (
+                <div className="summary-block" style={{background: 'rgba(30, 41, 59, 0.5)', borderRadius: '8px', padding: '1rem', marginBottom: '1.5rem', border: '1px solid rgba(148, 163, 184, 0.1)'}}>
+                  <div style={{fontSize: '0.9rem', textTransform: 'uppercase', letterSpacing: '0.05em', color: '#94a3b8', marginBottom: '0.75rem', fontWeight: 'bold'}}>🛠️ РОБОТИ ТА ПОСЛУГИ</div>
+                  
+                  {toNumber(installPercent, 0) > 0 && (
+                    <div className="flex justify-between py-1" style={{fontSize: '0.95rem', opacity: 0.9}}>
+                      <span>Монтаж та запуск ({toNumber(installPercent, 0)}%):</span>
+                      <span className="font-bold">${formatMoney(calculations.sums.installPercentAmountUsd)}</span>
+                    </div>
+                  )}
+                  
+                  {calculations.workItemsSumUsd > 0 && (
+                    <div className="flex justify-between py-1" style={{fontSize: '0.95rem', opacity: 0.9}}>
+                      <span>Додаткові роботи та послуги:</span>
+                      <span className="font-bold">${formatMoney(calculations.workItemsSumUsd)}</span>
+                    </div>
+                  )}
+  
+                  <div className="flex justify-between py-1" style={{borderTop: '1px solid rgba(148,163,184,0.2)', marginTop: '0.4rem', paddingTop: '0.4rem'}}>
+                    <span>Загальна вартість робіт:</span>
+                    <span className="font-bold text-green">${formatMoney(calculations.sums.installationTotalUsd)}</span>
                   </div>
-                )}
-                
-                {calculations.workItemsSumUsd > 0 && (
-                  <div className="flex justify-between py-1" style={{fontSize: '0.95rem', opacity: 0.9}}>
-                    <span>Додаткові роботи та послуги:</span>
-                    <span className="font-bold">${formatMoney(calculations.workItemsSumUsd)}</span>
+  
+                  <div className="flex justify-between py-1 internal-only" style={{opacity: 0.8, fontSize: '0.95rem'}}>
+                    <span>Собівартість робіт:</span>
+                    <span className="font-bold">${formatMoney(calculations.sums.workItemsCostUsd || 0)}</span>
                   </div>
+  
+                  <div className="flex justify-between py-1 internal-only" style={{borderTop: '1px dashed rgba(148,163,184,0.2)', marginTop: '0.4rem', paddingTop: '0.4rem'}}>
+                    <span style={{color: 'var(--accent-yellow)'}}>Маржа з робіт:</span>
+                    <span className="font-bold text-yellow">
+                      ${formatMoney(calculations.sums.marginWorksUsd || 0)}
+                      <span style={{fontSize: '0.85rem', marginLeft: '0.5rem', opacity: 0.8}}>({toNumber(calculations.sums.marginWorksPercent, 0).toFixed(1)}%)</span>
+                    </span>
+                  </div>
+                </div>
                 )}
-
-                <div className="flex justify-between py-1" style={{borderTop: '1px solid rgba(148,163,184,0.2)', marginTop: '0.4rem', paddingTop: '0.4rem'}}>
-                  <span>Загальна вартість робіт:</span>
-                  <span className="font-bold text-green">${formatMoney(calculations.sums.installationTotalUsd)}</span>
-                </div>
-
-                <div className="flex justify-between py-1 internal-only" style={{opacity: 0.8, fontSize: '0.95rem'}}>
-                  <span>Собівартість робіт:</span>
-                  <span className="font-bold">${formatMoney(calculations.sums.workItemsCostUsd || 0)}</span>
-                </div>
-
-                <div className="flex justify-between py-1 internal-only" style={{borderTop: '1px dashed rgba(148,163,184,0.2)', marginTop: '0.4rem', paddingTop: '0.4rem'}}>
-                  <span style={{color: 'var(--accent-yellow)'}}>Маржа з робіт:</span>
-                  <span className="font-bold text-yellow">
-                    ${formatMoney(calculations.sums.marginWorksUsd || 0)}
-                    <span style={{fontSize: '0.85rem', marginLeft: '0.5rem', opacity: 0.8}}>({toNumber(calculations.sums.marginWorksPercent, 0).toFixed(1)}%)</span>
-                  </span>
-                </div>
-              </div>
 
               {/* ЛОГІСТИКА ТА ПІДСУМОК */}
               <div className="summary-block" style={{padding: '0 1rem'}}>
@@ -3259,12 +3279,15 @@ function App() {
           <div className="project-modal-card">
             <h3 style={{marginBottom: '0.5rem'}}>Створити новий проєкт</h3>
             <p style={{color: 'var(--text-muted)', marginBottom: '1rem'}}>Оберіть тип нового проєкту:</p>
-            <div className="flex" style={{gap: '0.75rem'}}>
-              <button type="button" className="secondary" style={{background: '#0e7490', flex: 1}} onClick={() => startNewProject('project')}>
+            <div className="flex" style={{gap: '0.75rem', flexWrap: 'wrap'}}>
+              <button type="button" className="secondary" style={{background: '#0e7490', flex: '1 1 120px'}} onClick={() => startNewProject('project')}>
                 Проєктний
               </button>
-              <button type="button" className="secondary" style={{background: '#1d4ed8', flex: 1}} onClick={() => startNewProject('commercial')}>
+              <button type="button" className="secondary" style={{background: '#1d4ed8', flex: '1 1 120px'}} onClick={() => startNewProject('commercial')}>
                 Комерційний
+              </button>
+              <button type="button" className="secondary" style={{background: '#059669', flex: '1 1 120px'}} onClick={() => startNewProject('product')}>
+                Товарний
               </button>
             </div>
             <button type="button" className="danger" style={{marginTop: '1rem', width: '100%'}} onClick={() => setShowNewProjectDialog(false)}>
@@ -3428,5 +3451,15 @@ function App() {
   );
 }
 
-const root = ReactDOM.createRoot(document.getElementById('root'));
-root.render(<App />);
+try {
+  const rootElement = document.getElementById('root');
+  if (!rootElement) {
+    alert('Помилка: елемент #root не знайдено в index.html');
+  } else {
+    const root = ReactDOM.createRoot(rootElement);
+    root.render(<App />);
+  }
+} catch (e) {
+  alert('Помилка рендерінгу: ' + e.message);
+  console.error(e);
+}

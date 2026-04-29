@@ -1,4 +1,4 @@
-import { saveToDiskUtility } from './fileSystem.js';
+// Uses global saveToDiskUtility from fileSystem.js
 
 const toSafeFilePart = (value = "") => value.replace(/[/\\?*|"<>\:]/g, "").trim();
 const toNumber = (value, fallback = 0) => {
@@ -135,8 +135,9 @@ const buildExportGroupOrder = (groups = {}) => {
   return ordered;
 };
 
-export async function exportToExcelFile({
+async function exportToExcelFile({
   mode,
+  projectType = 'project',
   clientInfo,
   rates,
   modulePower,
@@ -160,8 +161,8 @@ export async function exportToExcelFile({
     const workbook = new window.ExcelJS.Workbook();
     const sheet = workbook.addWorksheet(isOffer ? 'КП' : 'Накладна');
 
-    // Налаштування ширини колонок
     if (!isOffer) {
+      // Налаштування ширини колонок
       sheet.getColumn(1).width = 5;
       sheet.getColumn(2).width = 46;
       sheet.getColumn(3).width = 8;
@@ -170,17 +171,6 @@ export async function exportToExcelFile({
       sheet.getColumn(6).width = 14;
       sheet.getColumn(7).width = 13;
       sheet.getColumn(8).width = 14;
-    } else {
-      sheet.getColumn(1).width = 4;
-      sheet.getColumn(2).width = 45;
-      sheet.getColumn(3).width = 6;
-      sheet.getColumn(4).width = 8;
-      sheet.getColumn(5).width = 10;
-      sheet.getColumn(6).width = 12;
-      sheet.getColumn(7).width = 12;
-      sheet.getColumn(8).width = 14;
-    }
-
     const tryAddLogo = async () => {
       const paths = ['./SolarLogo3.png', './SolarLogo2.png', 'SolarLogo3.png'];
       for (const src of paths) {
@@ -452,9 +442,7 @@ export async function exportToExcelFile({
       'Excel Накладна',
       projectFolderName
     );
-    return;
-  }
-
+    }
   sheet.getCell('A1').value = (isOffer ? 'Комерційна пропозиція: ' : 'ВИДАТКОВА НАКЛАДНА: ') + (clientInfo.address || 'Проєкт');
   sheet.getCell('A1').font = { bold: true, size: 14 };
 
@@ -485,9 +473,9 @@ export async function exportToExcelFile({
     'Сума, грн'
   ];
   const internalHeaders = ['Вхідна ціна, $', 'Націнка, %', 'Собівартість, $', 'Маржа, $', 'Маржа, грн'];
-  const headers = isOffer ? [...baseHeaders, ...internalHeaders] : baseHeaders;
+  const outHeaders = isOffer ? [...baseHeaders, ...internalHeaders] : baseHeaders;
 
-  addHeader(sheet, headers, headerRowIdx);
+  addHeader(sheet, outHeaders, headerRowIdx);
 
   sheet.getColumn(1).width = 45;
   for (let i = 2; i <= headers.length; i += 1) sheet.getColumn(i).width = 13;
@@ -778,75 +766,86 @@ export async function exportToExcelFile({
   enforceTotalsGreen(logRow);
 
   // Деталізовані монтажні роботи (кожна позиція окремим рядком)
-  addSectionHeader('Монтажні та пусконалагоджувальні роботи');
-  const worksStartRow = currentRow;
-  (calculations.processedWorkItems || []).forEach((item) => {
-    const name = (item?.name || '').trim();
-    const qty = toNumber(item?.quantity, 0);
-    if (!name || qty <= 0) return;
-    writeRow({
-      sheet,
-      rowNumber: currentRow,
-      isOffer,
-      name,
-      unit: item.unit || 'посл.',
-      qty,
-      priceUsd: toNumber(item?.priceNormalizedUsd, 0),
-      incomingUsd: toNumber(item?.incomingPriceNormalizedUsd, 0),
-      markupPercent: toNumber(item?.markupPercent, 0),
-      rowColor: stripeIdx % 2 === 0 ? 'FFFFFFFF' : 'FFF9F9F9'
+  const hasWorks = projectType !== 'product';
+  let insRow = null;
+  
+  if (hasWorks) {
+    addSectionHeader('Монтажні та пусконалагоджувальні роботи');
+    const worksStartRow = currentRow;
+    (calculations.processedWorkItems || []).forEach((item) => {
+      const name = (item?.name || '').trim();
+      const qty = toNumber(item?.quantity, 0);
+      if (!name || qty <= 0) return;
+      writeRow({
+        sheet,
+        rowNumber: currentRow,
+        isOffer,
+        name,
+        unit: item.unit || 'посл.',
+        qty,
+        priceUsd: toNumber(item?.priceNormalizedUsd, 0),
+        incomingUsd: toNumber(item?.incomingPriceNormalizedUsd, 0),
+        markupPercent: toNumber(item?.markupPercent, 0),
+        rowColor: stripeIdx % 2 === 0 ? 'FFFFFFFF' : 'FFF9F9F9'
+      });
+      currentRow += 1;
+      stripeIdx += 1;
     });
-    currentRow += 1;
-    stripeIdx += 1;
-  });
 
-  const installPercentValue = toNumber(installPercent, 0);
-  const installPercentUsd = toNumber(calculations.sums?.materialsSumUsd, 0) * (installPercentValue / 100);
-  const installPercentCostUsd = 0;
-  if (installPercentUsd > 0) {
-    writeRow({
-      sheet,
-      rowNumber: currentRow,
-      isOffer,
-      name: 'Монтажні роботи',
-      unit: 'посл.',
-      qty: 1,
-      priceUsd: installPercentUsd,
-      incomingUsd: installPercentCostUsd,
-      markupPercent: 0,
-      rowColor: 'FFEFF6FF'
-    });
-    currentRow += 1;
-  }
-  const worksEndRow = currentRow - 1;
+    const installPercentValue = toNumber(installPercent, 0);
+    const installPercentUsd = toNumber(calculations.sums?.materialsSumUsd, 0) * (installPercentValue / 100);
+    const installPercentCostUsd = 0;
+    if (installPercentUsd > 0) {
+      writeRow({
+        sheet,
+        rowNumber: currentRow,
+        isOffer,
+        name: 'Монтажні роботи',
+        unit: 'посл.',
+        qty: 1,
+        priceUsd: installPercentUsd,
+        incomingUsd: installPercentCostUsd,
+        markupPercent: 0,
+        rowColor: 'FFEFF6FF'
+      });
+      currentRow += 1;
+    }
+    const worksEndRow = currentRow - 1;
 
-  const insRow = sheet.getRow(currentRow++);
-  paintSummaryLine(insRow, 'Всього монтаж та запуск:');
-  if (worksEndRow >= worksStartRow) {
-    insRow.getCell(6).value = { formula: `SUM(F${worksStartRow}:F${worksEndRow})` };
-    insRow.getCell(7).value = { formula: `SUM(G${worksStartRow}:G${worksEndRow})` };
-    if (isOffer) {
-      insRow.getCell(10).value = { formula: `SUM(J${worksStartRow}:J${worksEndRow})` };
-      insRow.getCell(11).value = { formula: `SUM(K${worksStartRow}:K${worksEndRow})` };
-      insRow.getCell(12).value = { formula: `SUM(L${worksStartRow}:L${worksEndRow})` };
+    insRow = sheet.getRow(currentRow++);
+    paintSummaryLine(insRow, 'Всього монтаж та запуск:');
+    if (worksEndRow >= worksStartRow) {
+      insRow.getCell(6).value = { formula: `SUM(F${worksStartRow}:F${worksEndRow})` };
+      insRow.getCell(7).value = { formula: `SUM(G${worksStartRow}:G${worksEndRow})` };
+      if (isOffer) {
+        insRow.getCell(10).value = { formula: `SUM(J${worksStartRow}:J${worksEndRow})` };
+        insRow.getCell(11).value = { formula: `SUM(K${worksStartRow}:K${worksEndRow})` };
+        insRow.getCell(12).value = { formula: `SUM(L${worksStartRow}:L${worksEndRow})` };
+      }
+    } else {
+      insRow.getCell(6).value = 0;
+      insRow.getCell(7).value = 0;
+      if (isOffer) {
+        insRow.getCell(10).value = 0;
+        insRow.getCell(11).value = 0;
+        insRow.getCell(12).value = 0;
+      }
     }
-  } else {
-    insRow.getCell(6).value = 0;
-    insRow.getCell(7).value = 0;
-    if (isOffer) {
-      insRow.getCell(10).value = 0;
-      insRow.getCell(11).value = 0;
-      insRow.getCell(12).value = 0;
-    }
+    enforceTotalsGreen(insRow);
   }
-  enforceTotalsGreen(insRow);
 
   currentRow += 1;
   const finalRow = sheet.getRow(currentRow++);
   finalRow.height = 35;
   finalRow.getCell(1).value = 'РАЗОМ ДО СПЛАТИ:';
-  finalRow.getCell(6).value = { formula: `F${summaryStartRow}+F${logRow.number}+F${insRow.number}` };
-  finalRow.getCell(7).value = { formula: `G${summaryStartRow}+G${logRow.number}+G${insRow.number}` };
+  
+  if (insRow) {
+    finalRow.getCell(6).value = { formula: `F${summaryStartRow}+F${logRow.number}+F${insRow.number}` };
+    finalRow.getCell(7).value = { formula: `G${summaryStartRow}+G${logRow.number}+G${insRow.number}` };
+  } else {
+    finalRow.getCell(6).value = { formula: `F${summaryStartRow}+F${logRow.number}` };
+    finalRow.getCell(7).value = { formula: `G${summaryStartRow}+G${logRow.number}` };
+  }
   finalRow.eachCell((c, i) => {
     if (i === 1 || i === 6 || i === 7) {
       c.font = { bold: true, size: 14 };
@@ -902,18 +901,18 @@ export async function exportToExcelFile({
     sheet.getRow(currentRow).font = { italic: true };
   }
 
-  const buffer = await workbook.xlsx.writeBuffer();
-  const blob = new Blob([buffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
-  const baseDocName = buildDocumentBaseName(clientInfo, calculations.stationPowerW);
+  const outBuffer = await workbook.xlsx.writeBuffer();
+  const outBlob = new Blob([outBuffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+  const outBaseDocName = buildDocumentBaseName(clientInfo, calculations.stationPowerW);
   const suffix = isFullSpec ? '_Повна_специфікація' : '_Зведено';
-  const fileName = isOffer ? `${baseDocName}_КП${suffix}.xlsx` : `${baseDocName}_Накладна${suffix}.xlsx`;
+  const outFileName = isOffer ? `${outBaseDocName}_КП${suffix}.xlsx` : `${outBaseDocName}_Накладна${suffix}.xlsx`;
 
     await saveToDiskUtility(
       workspaceHandle,
       clientInfo,
       calculations,
-      fileName,
-      blob,
+      outFileName,
+      outBlob,
       isOffer ? 'Excel КП' : 'Excel Накладна',
       projectFolderName
     );
@@ -922,3 +921,5 @@ export async function exportToExcelFile({
     alert(`Помилка при створенні Excel: ${err.message}`);
   }
 }
+
+window.exportToExcelFile = exportToExcelFile;

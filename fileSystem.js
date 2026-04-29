@@ -72,7 +72,7 @@ const getVersionedFileName = async (dirHandle, requestedName) => {
   return `${base}_${Date.now()}${ext}`;
 };
 
-export async function saveToDiskUtility(workspaceHandle, clientInfo, calculations, fileName, blob, typeLabel, projectFolderName = '') {
+async function saveToDiskUtility(workspaceHandle, clientInfo, calculations, fileName, blob, typeLabel, projectFolderName = '') {
   const fallbackToDownload = (reasonText = '') => {
     const link = document.createElement('a');
     link.href = URL.createObjectURL(blob);
@@ -128,7 +128,7 @@ export async function saveToDiskUtility(workspaceHandle, clientInfo, calculation
   return fallbackToDownload('робоча папка не обрана');
 }
 
-export async function readWorkspaceJson(workspaceHandle, relativePath) {
+async function readWorkspaceJson(workspaceHandle, relativePath) {
   if (!workspaceHandle) return null;
   const hasWorkspacePermission = await ensureReadWritePermission(workspaceHandle);
   if (!hasWorkspacePermission) return null;
@@ -149,7 +149,7 @@ export async function readWorkspaceJson(workspaceHandle, relativePath) {
   }
 }
 
-export async function writeWorkspaceJson(workspaceHandle, relativePath, data) {
+async function writeWorkspaceJson(workspaceHandle, relativePath, data) {
   if (!workspaceHandle) return false;
   const hasWorkspacePermission = await ensureReadWritePermission(workspaceHandle);
   if (!hasWorkspacePermission) return false;
