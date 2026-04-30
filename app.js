@@ -13,6 +13,17 @@ const PROJECT_TYPES = {
   commercial: "Комерційний",
   product: "Товарний"
 };
+const TAX_MODES = {
+  none: "Без податків",
+  fop7: "ФОП 7%",
+  vat: "ПДВ",
+  fop_advanced: "ФОП просунутий"
+};
+const TAX_DISTRIBUTION_SCOPES = {
+  nonMainGoods: "Тільки неосновні товари",
+  allGoods: "Весь товар, включно з Основним обладнанням",
+  goodsWorksLogistics: "Товар + роботи + логістика"
+};
 const PV_TEMPLATE_TYPES = ["Стандарт", "Victron", "Інше"];
 const MOUNTING_TEMPLATE_TYPES = [
   "Похилий дах",
@@ -91,7 +102,8 @@ const createCommercialWorkItems = () => DEFAULT_COMMERCIAL_WORK_ITEMS.map((name,
   quantity: 1,
   price: 0,
   currency: "USD",
-  incomingPrice: 0
+  incomingPrice: 0,
+  markupPercent: 0
 }));
 const createDefaultGroupSettings = () => ({
   "Захист PV": { mode: 'fixed', name: 'Захист PV', price: 0, incomingPrice: 0, currency: 'USD', unit: 'компл', quantity: 1, markupPercent: 0, pvTemplateStrings: 1, pvTemplateType: 'Стандарт', pvCableMetersPerString: 150, pvAutoCableQuantity: true },
@@ -315,6 +327,19 @@ function App() {
   const [installPercent, setInstallPercent] = useState(() => getSaved('solar_installPercent', 15));
   const [managerCommissionRate, setManagerCommissionRate] = useState(() => getSaved('solar_managerCommissionRate', 10));
   const [clientDiscountPercent, setClientDiscountPercent] = useState(() => getSaved('solar_clientDiscountPercent', 0));
+  const [taxMode, setTaxMode] = useState(() => getSaved('solar_taxMode', 'none'));
+  const [fopTaxPercent, setFopTaxPercent] = useState(() => getSaved('solar_fopTaxPercent', 7));
+  const [advancedFopPercent, setAdvancedFopPercent] = useState(() => getSaved('solar_advancedFopPercent', 7));
+  const [advancedFopBaseMode, setAdvancedFopBaseMode] = useState(() => getSaved('solar_advancedFopBaseMode', 'all_goods'));
+  const [advancedFopSelectedGroups, setAdvancedFopSelectedGroups] = useState(() => getSaved('solar_advancedFopSelectedGroups', []));
+  const [advancedFopSelectedItems, setAdvancedFopSelectedItems] = useState(() => getSaved('solar_advancedFopSelectedItems', []));
+  const [advancedFopGroupPercents, setAdvancedFopGroupPercents] = useState(() => getSaved('solar_advancedFopGroupPercents', {}));
+  const [advancedFopItemPercents, setAdvancedFopItemPercents] = useState(() => getSaved('solar_advancedFopItemPercents', {}));
+  const [lockedDistributedTaxUsd, setLockedDistributedTaxUsd] = useState(() => getSaved('solar_lockedDistributedTaxUsd', null));
+  const [taxDistributionApplied, setTaxDistributionApplied] = useState(() => getSaved('solar_taxDistributionApplied', false));
+  const [taxDistributionScope, setTaxDistributionScope] = useState(() => getSaved('solar_taxDistributionScope', 'nonMainGoods'));
+  const [installPercentTaxUsd, setInstallPercentTaxUsd] = useState(() => getSaved('solar_installPercentTaxUsd', 0));
+  const [autoInstallPercentEnabled, setAutoInstallPercentEnabled] = useState(() => getSaved('solar_autoInstallPercentEnabled', true));
   const [groupSettings, setGroupSettings] = useState(() => getSaved('solar_groupSettings', createDefaultGroupSettings()));
 
   const [projectName, setProjectName] = useState("");
@@ -464,6 +489,17 @@ function App() {
 
     return db;
   }, [equipmentGroups, templates, projectCatalogSnapshots]);
+
+  const allProductNames = useMemo(() => {
+    const set = new Set();
+    Object.values(productDatabase || {}).forEach((arr) => {
+      (arr || []).forEach((name) => {
+        const n = String(name || '').trim();
+        if (n) set.add(n);
+      });
+    });
+    return Array.from(set);
+  }, [productDatabase]);
 
   const [printMode, setPrintMode] = useState(null); // null, 'offer', 'invoice'
   const [activeDropdown, setActiveDropdown] = useState(null);
@@ -998,6 +1034,7 @@ function App() {
     setClientInfo(data.clientInfo && typeof data.clientInfo === 'object' ? data.clientInfo : DEFAULT_CLIENT_INFO);
     setManagerCommissionRate(data.managerCommissionRate ?? 10);
     setClientDiscountPercent(data.clientDiscountPercent ?? 0);
+    setTaxMode(data.taxMode || 'none');
     setModulePower(data.modulePower ?? 550);
     setGroupSettings(data.groupSettings && typeof data.groupSettings === 'object' ? data.groupSettings : createDefaultGroupSettings());
     setProjectType(project.type || 'commercial');
@@ -1021,6 +1058,7 @@ function App() {
     setOfferPurpose(typeof data.offerPurpose === 'string' ? data.offerPurpose : DEFAULT_OFFER_PURPOSE);
     setInstallPercent(data.installPercent ?? 15);
     setClientDiscountPercent(data.clientDiscountPercent ?? 0);
+    setTaxMode(data.taxMode || 'none');
     setGroupSettings(data.groupSettings && typeof data.groupSettings === 'object' ? data.groupSettings : createDefaultGroupSettings());
     if (typeof data.autoMountingQuantity === 'boolean') {
       setAutoMountingQuantity(data.autoMountingQuantity);
@@ -1058,6 +1096,7 @@ function App() {
         installPercent,
         managerCommissionRate,
         clientDiscountPercent,
+        taxMode,
         groupSettings,
         autoMountingQuantity,
         projectFolderName: computedFolder
@@ -1244,6 +1283,7 @@ function App() {
         otherExpenses,
         installPercent,
         clientDiscountPercent,
+        taxMode,
         groupSettings,
         autoMountingQuantity
       }
@@ -1287,7 +1327,9 @@ function App() {
     setRates({ ...DEFAULT_RATES });
     setModulePower(550);
     setClientInfo({ ...DEFAULT_CLIENT_INFO });
-    setEquipmentGroups(createDefaultGroups());
+    let nextEquipmentGroups = createDefaultGroups();
+    let nextGroupSettings = createDefaultGroupSettings();
+
     if (type === 'commercial') {
       setWorkItems(createCommercialWorkItems());
       setOtherExpenses([]);
@@ -1296,13 +1338,8 @@ function App() {
       setWorkItems([]);
       setOtherExpenses(cloneList(DEFAULT_OTHER_EXPENSES));
       setInstallPercent(0);
-      const prodSettings = createDefaultGroupSettings();
-      // In product mode we only want Main Equipment by default
-      Object.keys(prodSettings).forEach(k => {
-        if (k !== "Основне обладнання") delete prodSettings[k];
-      });
-      setGroupSettings(prodSettings);
-      setEquipmentGroups({ "Основне обладнання": [] });
+      nextGroupSettings = {};
+      nextEquipmentGroups = { "Основне обладнання": [] };
     } else {
       setWorkItems(cloneList(DEFAULT_WORK_ITEMS));
       setOtherExpenses(cloneList(DEFAULT_OTHER_EXPENSES));
@@ -1310,8 +1347,11 @@ function App() {
     }
     setManagerCommissionRate(10);
     setClientDiscountPercent(0);
+    setTaxMode('none');
+    setFopTaxPercent(7);
     setAutoMountingQuantity(true);
-    setGroupSettings(createDefaultGroupSettings());
+    setEquipmentGroups(nextEquipmentGroups);
+    setGroupSettings(nextGroupSettings);
     setProjectType(type);
     setProjectName("");
     setProjectFolderName("");
@@ -1363,7 +1403,17 @@ function App() {
   const applyProductFromCatalog = (groupKey, id, selectedName, categoryKey = groupKey) => {
     updateEquipment(groupKey, id, 'name', selectedName);
     const normalized = String(selectedName || '').trim().toLowerCase();
-    const pricing = productLastValues?.[categoryKey]?.[normalized];
+    let pricing = productLastValues?.[categoryKey]?.[normalized];
+    if (!pricing && projectType === 'product') {
+      const categories = Object.keys(productLastValues || {});
+      for (const cat of categories) {
+        const candidate = productLastValues?.[cat]?.[normalized];
+        if (candidate) {
+          pricing = candidate;
+          break;
+        }
+      }
+    }
     if (!pricing) return;
 
     setEquipmentGroups(prev => ({
@@ -1946,6 +1996,19 @@ function App() {
   useEffect(() => { localStorage.setItem('solar_installPercent', JSON.stringify(installPercent)); }, [installPercent]);
   useEffect(() => { localStorage.setItem('solar_managerCommissionRate', JSON.stringify(managerCommissionRate)); }, [managerCommissionRate]);
   useEffect(() => { localStorage.setItem('solar_clientDiscountPercent', JSON.stringify(clientDiscountPercent)); }, [clientDiscountPercent]);
+  useEffect(() => { localStorage.setItem('solar_taxMode', JSON.stringify(taxMode)); }, [taxMode]);
+  useEffect(() => { localStorage.setItem('solar_fopTaxPercent', JSON.stringify(fopTaxPercent)); }, [fopTaxPercent]);
+  useEffect(() => { localStorage.setItem('solar_advancedFopPercent', JSON.stringify(advancedFopPercent)); }, [advancedFopPercent]);
+  useEffect(() => { localStorage.setItem('solar_advancedFopBaseMode', JSON.stringify(advancedFopBaseMode)); }, [advancedFopBaseMode]);
+  useEffect(() => { localStorage.setItem('solar_advancedFopSelectedGroups', JSON.stringify(advancedFopSelectedGroups)); }, [advancedFopSelectedGroups]);
+  useEffect(() => { localStorage.setItem('solar_advancedFopSelectedItems', JSON.stringify(advancedFopSelectedItems)); }, [advancedFopSelectedItems]);
+  useEffect(() => { localStorage.setItem('solar_advancedFopGroupPercents', JSON.stringify(advancedFopGroupPercents)); }, [advancedFopGroupPercents]);
+  useEffect(() => { localStorage.setItem('solar_advancedFopItemPercents', JSON.stringify(advancedFopItemPercents)); }, [advancedFopItemPercents]);
+  useEffect(() => { localStorage.setItem('solar_lockedDistributedTaxUsd', JSON.stringify(lockedDistributedTaxUsd)); }, [lockedDistributedTaxUsd]);
+  useEffect(() => { localStorage.setItem('solar_taxDistributionApplied', JSON.stringify(taxDistributionApplied)); }, [taxDistributionApplied]);
+  useEffect(() => { localStorage.setItem('solar_taxDistributionScope', JSON.stringify(taxDistributionScope)); }, [taxDistributionScope]);
+  useEffect(() => { localStorage.setItem('solar_installPercentTaxUsd', JSON.stringify(installPercentTaxUsd)); }, [installPercentTaxUsd]);
+  useEffect(() => { localStorage.setItem('solar_autoInstallPercentEnabled', JSON.stringify(autoInstallPercentEnabled)); }, [autoInstallPercentEnabled]);
   useEffect(() => { localStorage.setItem('solar_groupSettings', JSON.stringify(groupSettings)); }, [groupSettings]);
   useEffect(() => { localStorage.setItem('solar_project_catalog_snapshots', JSON.stringify(projectCatalogSnapshots)); }, [projectCatalogSnapshots]);
   useEffect(() => { localStorage.setItem('solar_mountingTemplateSelection', JSON.stringify(mountingTemplateSelection)); }, [mountingTemplateSelection]);
@@ -1995,6 +2058,7 @@ function App() {
             unit: settings.unit || 'компл',
             quantity: settings.quantity ?? 1,
             price: settings.price ?? 0,
+            priceBaseUsd: settings.priceBaseUsd,
             currency: settings.currency,
             incomingPrice: settings.incomingPrice ?? 0,
             priceUah,
@@ -2003,6 +2067,8 @@ function App() {
             costUsd,
             marginUsd,
             markupPercent: toNumber(settings.markupPercent, 0),
+            taxDistributedUsd: toNumber(settings.taxDistributedUsd, 0),
+            taxDistributedPerUnitUsd: toNumber(settings.taxDistributedPerUnitUsd, 0),
             isFixed: true
         }];
 
@@ -2106,9 +2172,11 @@ function App() {
     const marginWorksUsd = workItemsMarginUsd;
     const marginTotalUsd = marginMaterialsUsd + marginWorksUsd; // Брудна маржа (обладнання + роботи)
     
-    // Комісія менеджера — від маржі товару (тільки якщо вона позитивна)
-    const managerCommissionUsd = Math.max(0, marginMaterialsUsd) * (toNumber(managerCommissionRate, 0) / 100);
-    const netMarginUsd = marginTotalUsd - managerCommissionUsd; // Чиста маржа
+    // Податки рахуємо від загальної маржі (до комісії менеджера)
+    const grossMarginBeforeTaxesUsd = marginTotalUsd;
+    // Комісія менеджера (до податків) — від загальної маржі замовлення
+    const managerCommissionBeforeTaxesUsd = Math.max(0, grossMarginBeforeTaxesUsd) * (toNumber(managerCommissionRate, 0) / 100);
+    const netMarginBeforeTaxesUsd = grossMarginBeforeTaxesUsd - managerCommissionBeforeTaxesUsd;
 
     const finalTotalUsd = totals.sumUsd + installationTotalUsd + logisticsTotalUsd;
     const discountPercent = Math.max(0, toNumber(clientDiscountPercent, 0));
@@ -2123,6 +2191,71 @@ function App() {
     const marginMaterialsPercent = totals.sumUsd > 0 ? (marginMaterialsUsd / totals.sumUsd) * 100 : 0;
     const marginWorksPercent = workItemsSumUsd > 0 ? (marginWorksUsd / workItemsSumUsd) * 100 : 0;
     const marginFromOrderPercent = finalTotalWithDiscountUsd > 0 ? (marginTotalUsd / finalTotalWithDiscountUsd) * 100 : 0;
+    const materialsWithDiscountUsd = Math.max(0, totals.sumUsd - (discountUsd * (totals.sumUsd / (finalTotalUsd || 1))));
+    const worksWithDiscountUsd = Math.max(0, installationTotalUsd - (discountUsd * (installationTotalUsd / (finalTotalUsd || 1))));
+    const logisticsWithDiscountUsd = Math.max(0, logisticsTotalUsd - (discountUsd * (logisticsTotalUsd / (finalTotalUsd || 1))));
+    let taxesUsd = 0;
+    let vatGoodsUsd = 0;
+    let vatWorksUsd = 0;
+    let vatReceiptUsd = 0;
+    let advancedFopBaseUsd = 0;
+    if (taxMode === 'fop7') {
+      taxesUsd = finalTotalWithDiscountUsd * (Math.max(0, toNumber(fopTaxPercent, 7)) / 100);
+    } else if (taxMode === 'vat') {
+      vatGoodsUsd = materialsWithDiscountUsd * 0.20;
+      vatWorksUsd = worksWithDiscountUsd * 0.20;
+      vatReceiptUsd = finalTotalWithDiscountUsd * 0.02;
+      taxesUsd = vatGoodsUsd + vatWorksUsd + vatReceiptUsd;
+    } else if (taxMode === 'fop_advanced') {
+      const groupKeys = Object.keys(processedGroups || {});
+      if (advancedFopBaseMode === 'groups') {
+        const grouped = groupKeys.reduce((acc, gk) => {
+          if (!advancedFopSelectedGroups.includes(gk)) return acc;
+          const groupSum = toNumber(groupTotalsUsd[gk], 0);
+          const groupPercent = Math.max(7, Math.min(9, toNumber(advancedFopGroupPercents[gk], toNumber(advancedFopPercent, 7))));
+          advancedFopBaseUsd += groupSum;
+          return acc + ((groupSum * 0.5) * (groupPercent / 100));
+        }, 0);
+        taxesUsd = grouped;
+      } else if (advancedFopBaseMode === 'items') {
+        const byItems = groupKeys.reduce((acc, gk) => {
+          const rows = Array.isArray(processedGroups[gk]) ? processedGroups[gk] : [];
+          return acc + rows.reduce((s, row) => {
+            const key = `${gk}::${row.id}`;
+            if (!advancedFopSelectedItems.includes(key)) return s;
+            const rowSum = toNumber(row.sumUsd, 0);
+            const rowPercent = Math.max(7, Math.min(9, toNumber(advancedFopItemPercents[key], toNumber(advancedFopPercent, 7))));
+            advancedFopBaseUsd += rowSum;
+            return s + ((rowSum * 0.5) * (rowPercent / 100));
+          }, 0);
+        }, 0);
+        taxesUsd = byItems;
+      } else {
+        advancedFopBaseUsd = materialsWithDiscountUsd;
+        const taxBaseUsd = advancedFopBaseUsd * 0.5;
+        taxesUsd = taxBaseUsd * (Math.max(7, Math.min(9, toNumber(advancedFopPercent, 7))) / 100);
+      }
+    }
+    const distributedTaxUsdFromRows = Object.values(equipmentGroups || {}).reduce((groupsAcc, items) => {
+      const list = Array.isArray(items) ? items : [];
+      return groupsAcc + list.reduce((acc, it) => acc + Math.max(0, toNumber(it.taxDistributedUsd, 0)), 0);
+    }, 0);
+    const distributedTaxUsdFromFixedGroups = Object.values(groupSettings || {}).reduce((acc, settings) => {
+      return acc + Math.max(0, toNumber(settings?.taxDistributedUsd, 0));
+    }, 0);
+    const distributedTaxUsdTotal = distributedTaxUsdFromRows + distributedTaxUsdFromFixedGroups;
+    if (taxMode !== 'vat' && taxDistributionApplied && lockedDistributedTaxUsd !== null && lockedDistributedTaxUsd !== undefined && toNumber(lockedDistributedTaxUsd, 0) > 0) {
+      taxesUsd = toNumber(lockedDistributedTaxUsd, 0);
+    }
+    const marginAfterTaxesUsd = grossMarginBeforeTaxesUsd - taxesUsd;
+    const taxesUah = taxesUsd * safeUsdRate;
+    const marginAfterTaxesUah = marginAfterTaxesUsd * safeUsdRate;
+    // Комісія менеджера (після податків) — від маржі після податків
+    const managerCommissionAfterTaxesUsd = Math.max(0, marginAfterTaxesUsd) * (toNumber(managerCommissionRate, 0) / 100);
+    const managerCommissionAfterTaxesUah = managerCommissionAfterTaxesUsd * safeUsdRate;
+    // Чистий прибуток після податків і комісії
+    const netMarginUsd = marginAfterTaxesUsd - managerCommissionAfterTaxesUsd;
+    const netMarginUah = netMarginUsd * safeUsdRate;
 
     return {
       groups: processedGroups,
@@ -2157,8 +2290,26 @@ function App() {
         marginWorksPercent,
         marginTotalUsd,
         marginFromOrderPercent,
-        managerCommissionUsd,
+        taxesUsd,
+        taxesUah,
+        vatGoodsUsd,
+        vatWorksUsd,
+        vatReceiptUsd,
+        advancedFopBaseUsd,
+        advancedFopPercent: Math.max(7, Math.min(9, toNumber(advancedFopPercent, 7))),
+        vatGoodsUah: vatGoodsUsd * safeUsdRate,
+        vatWorksUah: vatWorksUsd * safeUsdRate,
+        vatReceiptUah: vatReceiptUsd * safeUsdRate,
+        distributedTaxUsdFromRows: (taxDistributionApplied || taxMode === 'fop_advanced') ? distributedTaxUsdTotal : 0,
+        grossMarginBeforeTaxesUsd,
+        netMarginBeforeTaxesUsd,
+        marginAfterTaxesUsd,
+        marginAfterTaxesUah,
+        managerCommissionBeforeTaxesUsd,
+        managerCommissionAfterTaxesUsd,
+        managerCommissionAfterTaxesUah,
         netMarginUsd,
+        netMarginUah,
         discountPercent,
         discountUsd,
         finalTotalUsd,
@@ -2169,14 +2320,35 @@ function App() {
         finalTotalWithDiscountEur
       }
     };
-  }, [equipmentGroups, rates, modulePower, installPercent, workItems, otherExpenses, managerCommissionRate, clientDiscountPercent, groupSettings]);
+  }, [
+    equipmentGroups,
+    rates,
+    modulePower,
+    installPercent,
+    workItems,
+    otherExpenses,
+    managerCommissionRate,
+    clientDiscountPercent,
+    groupSettings,
+    taxMode,
+    fopTaxPercent,
+    lockedDistributedTaxUsd,
+    taxDistributionApplied,
+    advancedFopPercent,
+    advancedFopBaseMode,
+    advancedFopSelectedGroups,
+    advancedFopSelectedItems,
+    advancedFopGroupPercents,
+    advancedFopItemPercents
+  ]);
 
   const protectionGroups = useMemo(
     () => Object.keys(calculations.groups).filter(groupKey => groupKey.startsWith("Захист") && groupKey !== "Захист"),
     [calculations.groups]
   );
   const installPercentValue = toNumber(installPercent, 0);
-  const installPercentOnlyUsd = calculations.sums.materialsSumUsd * (installPercentValue / 100);
+  const installPercentBaseUsd = calculations.sums.materialsSumUsd;
+  const installPercentOnlyUsd = autoInstallPercentEnabled ? (installPercentBaseUsd * (installPercentValue / 100)) : 0;
   const installPercentOnlyUah = installPercentOnlyUsd * toNumber(rates.usd, 0);
   const commercialServiceTotalUsd = calculations.workItemsSumUsd + calculations.otherCostsUsd + installPercentOnlyUsd;
   const commercialServicePercent = calculations.sums.materialsSumUsd > 0
@@ -2252,6 +2424,225 @@ function App() {
     </span>
   );
 
+  const distributeTaxToGoods = () => {
+    const taxAmount = toNumber(lockedDistributedTaxUsd, 0) > 0
+      ? toNumber(lockedDistributedTaxUsd, 0)
+      : toNumber(calculations.sums.taxesUsd, 0);
+    if (taxAmount <= 0) {
+      alert('Немає податку для розподілу.');
+      return;
+    }
+
+    const eligible = [];
+    const isAdvancedFop = taxMode === 'fop_advanced';
+    Object.keys(calculations.groups || {}).forEach((groupKey) => {
+      if (!isAdvancedFop && taxDistributionScope === 'nonMainGoods' && groupKey === 'Основне обладнання') return;
+      if (isAdvancedFop && advancedFopBaseMode === 'groups' && !advancedFopSelectedGroups.includes(groupKey)) return;
+      const isFixedGroup = (groupSettings[groupKey]?.mode || 'detailed') === 'fixed';
+      if (isFixedGroup) {
+        if (isAdvancedFop && advancedFopBaseMode === 'items') return;
+        const qty = Math.max(1, toNumber(groupSettings[groupKey]?.quantity, 1));
+        const groupSum = Math.max(0, toNumber(calculations.groupTotalsUsd?.[groupKey], 0));
+        if (groupSum > 0) eligible.push({ kind: 'fixed', groupKey, qty, sum: groupSum });
+        return;
+      }
+      const items = Array.isArray(calculations.groups[groupKey]) ? calculations.groups[groupKey] : [];
+      items.forEach((item) => {
+        if (isAdvancedFop && advancedFopBaseMode === 'items' && !advancedFopSelectedItems.includes(`${groupKey}::${item.id}`)) return;
+        const qty = Math.max(0, toNumber(item.quantity, 0));
+        const sumUsd = Math.max(0, toNumber(item.sumUsd, 0));
+        const fallbackSumUsd = Math.max(0, toNumber(item.priceNormalizedUsd, toNumber(item.price, 0)) * qty);
+        const effectiveSumUsd = sumUsd > 0 ? sumUsd : fallbackSumUsd;
+        if (qty > 0 && effectiveSumUsd > 0) eligible.push({ kind: 'item', groupKey, id: item.id, qty, sum: effectiveSumUsd });
+      });
+    });
+
+    const totalEligible = eligible.reduce((acc, x) => acc + x.sum, 0);
+    if (totalEligible <= 0) {
+      alert('Немає позицій для розкиду податку (перевірте ціни/кількість у неосновних блоках).');
+      return;
+    }
+
+    const addMap = new Map();
+    const fixedAddMap = new Map();
+    const workAddMap = new Map();
+    const logisticsAddMap = new Map();
+    let installPercentAdd = 0;
+
+    if (!isAdvancedFop && taxDistributionScope === 'goodsWorksLogistics') {
+      if (installPercentOnlyUsd > 0) {
+        eligible.push({ kind: 'installPercent', id: 'installPercent', qty: 1, sum: installPercentOnlyUsd });
+      }
+      (calculations.processedWorkItems || []).forEach((it) => {
+        const qty = Math.max(0, toNumber(it.quantity, 0));
+        const sum = Math.max(0, toNumber(it.sumUsd, 0));
+        if (qty > 0 && sum > 0) eligible.push({ kind: 'work', id: it.id, qty, sum });
+      });
+      (calculations.processedOtherExpenses || []).forEach((it) => {
+        const qty = Math.max(0, toNumber(it.quantity, 0));
+        const sum = Math.max(0, toNumber(it.sumUsd, 0));
+        if (qty > 0 && sum > 0) eligible.push({ kind: 'logistics', id: it.id, qty, sum });
+      });
+    }
+
+    const fullEligibleTotal = eligible.reduce((acc, x) => acc + x.sum, 0);
+    if (fullEligibleTotal <= 0) {
+      alert('Немає позицій для розкиду податку (перевірте ціни/кількість).');
+      return;
+    }
+
+    eligible.forEach((x) => {
+      const add = taxAmount * (x.sum / fullEligibleTotal);
+      if (x.kind === 'fixed') fixedAddMap.set(x.groupKey, add);
+      else if (x.kind === 'work') workAddMap.set(x.id, add);
+      else if (x.kind === 'logistics') logisticsAddMap.set(x.id, add);
+      else if (x.kind === 'installPercent') installPercentAdd = add;
+      else addMap.set(`${x.groupKey}__${x.id}`, add);
+    });
+
+    setEquipmentGroups((prev) => {
+      const next = { ...prev };
+      Object.keys(next).forEach((groupKey) => {
+        next[groupKey] = (next[groupKey] || []).map((item) => {
+          const previousPerUnitTax = toNumber(item.taxDistributedPerUnitUsd, 0);
+          const basePrice = Math.max(0, toNumber(item.price, 0) - previousPerUnitTax);
+          const add = addMap.get(`${groupKey}__${item.id}`) || 0;
+          const qty = Math.max(1, toNumber(item.quantity, 1));
+          const perUnitAdd = add > 0 ? (add / qty) : 0;
+          const newPrice = basePrice + perUnitAdd;
+          const incoming = toNumber(item.incomingPrice, 0);
+          const newMarkup = incoming > 0 ? ((newPrice - incoming) / incoming) * 100 : toNumber(item.markupPercent, 0);
+          return { ...item, priceBaseUsd: basePrice, price: newPrice, markupPercent: newMarkup, taxDistributedUsd: add, taxDistributedPerUnitUsd: perUnitAdd };
+        });
+      });
+      return next;
+    });
+
+    setGroupSettings((prev) => {
+      const next = { ...prev };
+      fixedAddMap.forEach((add, groupKey) => {
+        const current = next[groupKey] || {};
+        const prevPerUnitTax = toNumber(current.taxDistributedPerUnitUsd, 0);
+        const qty = Math.max(1, toNumber(current.quantity, 1));
+        const basePrice = Math.max(0, toNumber(current.price, 0) - prevPerUnitTax);
+        const perUnitAdd = add > 0 ? (add / qty) : 0;
+        const newPrice = basePrice + perUnitAdd;
+        const incoming = toNumber(current.incomingPrice, 0);
+        const newMarkup = incoming > 0 ? ((newPrice - incoming) / incoming) * 100 : toNumber(current.markupPercent, 0);
+        next[groupKey] = { ...current, priceBaseUsd: basePrice, price: newPrice, markupPercent: newMarkup, taxDistributedUsd: add, taxDistributedPerUnitUsd: perUnitAdd };
+      });
+      return next;
+    });
+
+    if (taxDistributionScope === 'goodsWorksLogistics') {
+      setInstallPercentTaxUsd(Math.max(0, installPercentAdd));
+      setWorkItems((prev) => (prev || []).map((it) => {
+        const prevPerUnitTax = toNumber(it.taxDistributedPerUnitUsd, 0);
+        const basePrice = Math.max(0, toNumber(it.price, 0) - prevPerUnitTax);
+        const add = workAddMap.get(it.id) || 0;
+        const qty = Math.max(1, toNumber(it.quantity, 1));
+        const perUnitAdd = add > 0 ? add / qty : 0;
+        const newPrice = basePrice + perUnitAdd;
+        const incoming = toNumber(it.incomingPrice, 0);
+        const newMarkup = incoming > 0 ? ((newPrice - incoming) / incoming) * 100 : toNumber(it.markupPercent, 0);
+        return { ...it, priceBaseUsd: basePrice, price: newPrice, markupPercent: newMarkup, taxDistributedUsd: add, taxDistributedPerUnitUsd: perUnitAdd };
+      }));
+      setOtherExpenses((prev) => (prev || []).map((it) => {
+        const prevPerUnitTax = toNumber(it.taxDistributedPerUnitUsd, 0);
+        const basePrice = Math.max(0, toNumber(it.price, 0) - prevPerUnitTax);
+        const add = logisticsAddMap.get(it.id) || 0;
+        const qty = Math.max(1, toNumber(it.quantity, 1));
+        const perUnitAdd = add > 0 ? add / qty : 0;
+        const newPrice = basePrice + perUnitAdd;
+        const incoming = toNumber(it.incomingPrice, 0);
+        const newMarkup = incoming > 0 ? ((newPrice - incoming) / incoming) * 100 : toNumber(it.markupPercent, 0);
+        return { ...it, priceBaseUsd: basePrice, price: newPrice, markupPercent: newMarkup, taxDistributedUsd: add, taxDistributedPerUnitUsd: perUnitAdd };
+      }));
+    } else {
+      setInstallPercentTaxUsd(0);
+    }
+    if (toNumber(lockedDistributedTaxUsd, 0) <= 0) setLockedDistributedTaxUsd(taxAmount);
+    setTaxDistributionApplied(true);
+
+    if (taxMode === 'fop_advanced') {
+      const modeLabel =
+        advancedFopBaseMode === 'items' ? 'обраних товарах' :
+        advancedFopBaseMode === 'groups' ? 'обраних групах' :
+        'всьому товарі';
+      alert(`Податок розкинуто по ${modeLabel}.`);
+    } else {
+      alert('Податок розкинуто по товарах.');
+    }
+  };
+
+  const rollbackDistributedTax = () => {
+    setEquipmentGroups((prev) => {
+      const next = { ...prev };
+      Object.keys(next).forEach((groupKey) => {
+        next[groupKey] = (next[groupKey] || []).map((item) => {
+          const distributedPerUnit = toNumber(item.taxDistributedPerUnitUsd, 0);
+          if (distributedPerUnit <= 0) return { ...item, priceBaseUsd: undefined };
+          const restoredPrice = Math.max(0, toNumber(item.price, 0) - distributedPerUnit);
+          const incoming = toNumber(item.incomingPrice, 0);
+          const restoredMarkup = incoming > 0 ? ((restoredPrice - incoming) / incoming) * 100 : toNumber(item.markupPercent, 0);
+          return {
+            ...item,
+            price: restoredPrice,
+            priceBaseUsd: restoredPrice,
+            markupPercent: restoredMarkup,
+            taxDistributedUsd: 0,
+            taxDistributedPerUnitUsd: 0
+          };
+        });
+      });
+      return next;
+    });
+    setGroupSettings((prev) => {
+      const next = { ...prev };
+      Object.keys(next).forEach((groupKey) => {
+        const current = next[groupKey] || {};
+        const perUnit = toNumber(current.taxDistributedPerUnitUsd, 0);
+        if (perUnit <= 0) return;
+        const restoredPrice = Math.max(0, toNumber(current.price, 0) - perUnit);
+        const incoming = toNumber(current.incomingPrice, 0);
+        const restoredMarkup = incoming > 0 ? ((restoredPrice - incoming) / incoming) * 100 : toNumber(current.markupPercent, 0);
+        next[groupKey] = { ...current, price: restoredPrice, priceBaseUsd: restoredPrice, markupPercent: restoredMarkup, taxDistributedUsd: 0, taxDistributedPerUnitUsd: 0 };
+      });
+      return next;
+    });
+    setWorkItems((prev) => (prev || []).map((it) => {
+      const perUnit = toNumber(it.taxDistributedPerUnitUsd, 0);
+      if (perUnit <= 0) return { ...it, priceBaseUsd: undefined };
+      const restoredPrice = Math.max(0, toNumber(it.price, 0) - perUnit);
+      const incoming = toNumber(it.incomingPrice, 0);
+      const restoredMarkup = incoming > 0 ? ((restoredPrice - incoming) / incoming) * 100 : toNumber(it.markupPercent, 0);
+      return { ...it, price: restoredPrice, priceBaseUsd: restoredPrice, markupPercent: restoredMarkup, taxDistributedUsd: 0, taxDistributedPerUnitUsd: 0 };
+    }));
+    setOtherExpenses((prev) => (prev || []).map((it) => {
+      const perUnit = toNumber(it.taxDistributedPerUnitUsd, 0);
+      if (perUnit <= 0) return { ...it, priceBaseUsd: undefined };
+      const restoredPrice = Math.max(0, toNumber(it.price, 0) - perUnit);
+      const incoming = toNumber(it.incomingPrice, 0);
+      const restoredMarkup = incoming > 0 ? ((restoredPrice - incoming) / incoming) * 100 : toNumber(it.markupPercent, 0);
+      return { ...it, price: restoredPrice, priceBaseUsd: restoredPrice, markupPercent: restoredMarkup, taxDistributedUsd: 0, taxDistributedPerUnitUsd: 0 };
+    }));
+    setInstallPercentTaxUsd(0);
+    setLockedDistributedTaxUsd(null);
+    setTaxDistributionApplied(false);
+    alert('Розкид податку скасовано.');
+  };
+
+  const getDistributedTaxByGroup = (groupKey) => {
+    const rowTax = (equipmentGroups[groupKey] || []).reduce((acc, item) => acc + Math.max(0, toNumber(item.taxDistributedUsd, 0)), 0);
+    const fixedTax = Math.max(0, toNumber(groupSettings[groupKey]?.taxDistributedUsd, 0));
+    return rowTax + fixedTax;
+  };
+
+  const resetTaxDistributionState = () => {
+    setTaxDistributionApplied(false);
+    setLockedDistributedTaxUsd(null);
+  };
+
   return (
     <div className={`container ${clientMode ? 'client-mode' : ''} ${layoutMode === 'sidebar' ? 'layout-sidebar' : 'layout-classic'} ${menuCollapsed ? 'menu-collapsed' : ''}`}>
       {Object.keys(productDatabase).map(cat => (
@@ -2268,11 +2659,6 @@ function App() {
             <div style={{fontSize: '0.92rem', color: 'var(--text-muted)', marginTop: '0.25rem'}}>
               Тип поточного проєкту: <strong style={{color: 'var(--accent-yellow)'}}>{PROJECT_TYPES[projectType] || PROJECT_TYPES.commercial}</strong>
             </div>
-            {projectFolderName && (
-              <div style={{fontSize: '0.85rem', color: 'var(--text-muted)', marginTop: '0.15rem'}}>
-                Папка проєкту: <strong style={{color: 'var(--accent-mint)'}}>{projectFolderName}</strong>
-              </div>
-            )}
           </div>
 
           <div className={`top-export ${isSidebarLayout ? 'sidebar-menu-group' : ''}`}>
@@ -2309,7 +2695,6 @@ function App() {
               <option value="classic">Класичний</option>
               <option value="sidebar">Бокове меню</option>
             </select>
-            <button type="button" className="secondary menu-action-btn" data-cat="folder" style={{background: '#ef4444'}} onClick={openProjectFolder} data-title="Папка проєкту"><MenuBtnLabel icon="📂" label="Папка проєкту" /></button>
             <button type="button" className="secondary menu-action-btn" data-cat="export" style={{background: "#059669"}} onClick={() => exportToExcel("offer", "summary")} data-title="Excel (зведено)"><MenuBtnLabel icon="📊" label="Excel (зведено)" /></button>
             <button type="button" className="secondary menu-action-btn" data-cat="export" style={{background: "#0f766e"}} onClick={() => exportToExcel("offer", "full")} data-title="Excel (повна)"><MenuBtnLabel icon="📗" label="Excel (повна)" /></button>
             <button type="button" className="secondary menu-action-btn" data-cat="print" style={{background: '#7c3aed'}} onClick={() => setPrintMode('offer')} data-title="КП"><MenuBtnLabel icon="📄" label="КП" /></button>
@@ -2329,14 +2714,6 @@ function App() {
               )}
               <div className={`flex flex-col gap-1 ${menuCollapsed ? 'hidden' : ''}`} style={{minWidth: isSidebarLayout && !menuCollapsed ? '250px' : '0'}}>
                 <input type="text" value={projectName} onChange={(e) => setProjectName(e.target.value)} placeholder="Назва проєкту..." className="project-name-input" style={{width: '100%'}} />
-                <input 
-                  type="text" 
-                  value={workspacePath} 
-                  onChange={(e) => setWorkspacePath(e.target.value)} 
-                  placeholder="Абсолютний шлях до робочої папки (для Windows)..." 
-                  style={{fontSize: '0.75rem', padding: '0.3rem 0.5rem', opacity: 0.8}} 
-                  title="Вкажіть шлях (напр. D:\Solar\Projects), щоб кнопка 'Відкрити папку' працювала стабільно на Windows"
-                />
               </div>
               <button type="button" className="secondary light-surface-btn menu-action-btn" data-cat="project" onClick={saveProject} data-title="Зберегти проєкт"><MenuBtnLabel icon="💾" label="Зберегти проєкт" /></button>
               <button type="button" className="secondary menu-action-btn" data-cat="project" style={{background: '#374151'}} onClick={openProjectPicker} data-title="Відкрити проєкт"><MenuBtnLabel icon="📂" label="Відкрити проєкт" /></button>
@@ -2400,25 +2777,27 @@ function App() {
       </div>
 
       <div className="card table-container" style={{padding: '0'}}>
-        <div className="flex justify-between items-center" style={{padding: '0.75rem 1rem', borderBottom: '1px solid var(--border-color)', gap: '0.75rem', flexWrap: 'wrap'}}>
-          <div style={{fontWeight: 700, color: 'var(--text-muted)', fontSize: '0.9rem'}}>Категорії</div>
-          <div className="flex items-center" style={{gap: '0.5rem', flexWrap: 'wrap'}}>
-            <input
-              type="text"
-              value={newCategoryName}
-              onChange={(e) => setNewCategoryName(e.target.value)}
-              onKeyDown={(e) => { if (e.key === 'Enter') addCustomCategory(); }}
-              placeholder="Нова категорія..."
-              style={{width: '230px', padding: '0.45rem'}}
-            />
-            <button type="button" className="secondary" style={{background: '#0f766e'}} onClick={addCustomCategory}>+ Додати категорію</button>
+        {projectType !== 'product' && (
+          <div className="flex justify-between items-center" style={{padding: '0.75rem 1rem', borderBottom: '1px solid var(--border-color)', gap: '0.75rem', flexWrap: 'wrap'}}>
+            <div style={{fontWeight: 700, color: 'var(--text-muted)', fontSize: '0.9rem'}}>Категорії</div>
+            <div className="flex items-center" style={{gap: '0.5rem', flexWrap: 'wrap'}}>
+              <input
+                type="text"
+                value={newCategoryName}
+                onChange={(e) => setNewCategoryName(e.target.value)}
+                onKeyDown={(e) => { if (e.key === 'Enter') addCustomCategory(); }}
+                placeholder="Нова категорія..."
+                style={{width: '230px', padding: '0.45rem'}}
+              />
+              <button type="button" className="secondary" style={{background: '#0f766e'}} onClick={addCustomCategory}>+ Додати категорію</button>
+            </div>
           </div>
-        </div>
+        )}
         <table>
           {(() => {
             const allSections = ["Основне обладнання", "ЗАХИСТ", "Кріплення", "Кабельна продукція", "Заземлення", "Інші групи"];
             if (projectType === 'product') {
-              return ["Основне обладнання", "Інші групи"];
+              return ["Основне обладнання"];
             }
             return allSections;
           })().map(sectionKey => {
@@ -2560,6 +2939,11 @@ function App() {
                                   </button>
                                 </div>
                               )}
+                              {toNumber(settings.taxDistributedUsd, 0) > 0 && (
+                                <div style={{marginTop: '0.35rem', fontSize: '0.76rem', color: '#fbbf24'}}>
+                                  + Податок: ${formatMoney(settings.taxDistributedUsd)} (по ${formatMoney(settings.taxDistributedPerUnitUsd || 0)}/од.) · Ціна: ${formatMoney(settings.priceBaseUsd ?? (toNumber(settings.price, 0) - toNumber(settings.taxDistributedPerUnitUsd, 0)))} → ${formatMoney(settings.price)}
+                                </div>
+                              )}
                             </div>
                           </td>
                           <td>
@@ -2607,6 +2991,11 @@ function App() {
                                      ))}
                                    </div>
                                 )}
+                                {toNumber(item.taxDistributedUsd, 0) > 0 && (
+                                  <div style={{marginTop: '0.25rem', fontSize: '0.76rem', color: '#fbbf24'}}>
+                                    + Податок: ${formatMoney(item.taxDistributedUsd)} (по ${formatMoney(item.taxDistributedPerUnitUsd || 0)}/од.) · Ціна: ${formatMoney(item.priceBaseUsd ?? (toNumber(item.price, 0) - toNumber(item.taxDistributedPerUnitUsd, 0)))} → ${formatMoney(item.price)}
+                                  </div>
+                                )}
                               </div>
                             </td>
                             <td><select value={item.unit} onChange={(e) => updateEquipment(gk, item.id, 'unit', e.target.value)}>{UNITS.map(u => <option key={u} value={u}>{u}</option>)}</select></td>
@@ -2630,7 +3019,11 @@ function App() {
                     <td className="text-right font-bold text-blue">${formatMoney(totalSectionSumUsd)}</td>
                     <td className="text-right font-bold text-blue">₴{formatMoney(totalSectionSumUah)}</td>
                     <td className="text-right font-bold text-blue internal-only">${formatMoney(totalSectionCostUsd)}</td>
-                    <td colSpan="3"></td>
+                    <td colSpan="3" className="text-right" style={{fontSize: '0.78rem', color: '#fbbf24'}}>
+                      {toNumber(getDistributedTaxByGroup('Захист PV') + getDistributedTaxByGroup('Захист AC') + getDistributedTaxByGroup('Захист DC'), 0) > 0
+                        ? `Податок у розділі: $${formatMoney(getDistributedTaxByGroup('Захист PV') + getDistributedTaxByGroup('Захист AC') + getDistributedTaxByGroup('Захист DC'))}`
+                        : ''}
+                    </td>
                   </tr>
                 </tbody>
               );
@@ -2644,7 +3037,7 @@ function App() {
                   <tr>
                     <td colSpan="12" className="group-header">
                       <div className="flex justify-between items-center" style={{gap: '0.6rem', flexWrap: 'wrap'}}>
-                        <span>{groupKey.toUpperCase()}</span>
+                    <span>{projectType === 'product' && groupKey === 'Основне обладнання' ? 'ТОВАРИ' : groupKey.toUpperCase()}</span>
                         <div className="flex items-center" style={{gap: '0.45rem', flexWrap: 'wrap'}}>
                           <select
                             className="secondary"
@@ -2719,6 +3112,11 @@ function App() {
                                  ))}
                                </div>
                             )}
+                            {toNumber(item.taxDistributedUsd, 0) > 0 && (
+                              <div style={{marginTop: '0.25rem', fontSize: '0.76rem', color: '#fbbf24'}}>
+                                + Податок: ${formatMoney(item.taxDistributedUsd)} (по ${formatMoney(item.taxDistributedPerUnitUsd || 0)}/од.) · Ціна: ${formatMoney(item.priceBaseUsd ?? (toNumber(item.price, 0) - toNumber(item.taxDistributedPerUnitUsd, 0)))} → ${formatMoney(item.price)}
+                              </div>
+                            )}
                           </div>
                         </div>
                       </td>
@@ -2740,7 +3138,9 @@ function App() {
                     <td className="text-right font-bold text-blue">${formatMoney(calculations.groupTotalsUsd[groupKey])}</td>
                     <td className="text-right font-bold text-blue">₴{formatMoney(calculations.groupTotalsUah[groupKey])}</td>
                     <td className="text-right font-bold text-blue internal-only">${formatMoney(calculations.groupCostTotalsUsd[groupKey])}</td>
-                    <td colSpan="3"></td>
+                    <td colSpan="3" className="text-right" style={{fontSize: '0.78rem', color: '#fbbf24'}}>
+                      {toNumber(getDistributedTaxByGroup(groupKey), 0) > 0 ? `Податок у розділі: $${formatMoney(getDistributedTaxByGroup(groupKey))}` : ''}
+                    </td>
                   </tr>
                 </tbody>
               ));
@@ -2801,14 +3201,15 @@ function App() {
                   <th style={{width: '50px'}}></th>
                 </tr>
                 {calculations.groups[groupKey].map((item, itemIndex) => {
+                  const isProductMainGroup = projectType === 'product' && groupKey === 'Основне обладнання';
                   const categoryLabel = (groupKey === "Основне обладнання" && item.type) ? item.type : groupKey;
-                  const datalistId = `db-${categoryLabel.replace(/\s+/g, '-')}`;
+                  const dropdownSource = isProductMainGroup ? allProductNames : (productDatabase[categoryLabel] || []);
 
                   return (
                     <tr key={item.id}>
                       <td className="col-name">
                         <div className="equipment-cell">
-                          {(groupKey === "Основне обладнання" || groupKey === "Захист" || groupKey === "Заземлення" || groupKey === "Кабельна продукція") && (
+                          {!isProductMainGroup && (groupKey === "Основне обладнання" || groupKey === "Захист" || groupKey === "Заземлення" || groupKey === "Кабельна продукція") && (
                             <select 
                               className="equipment-type-input" 
                               style={{width: '140px', marginRight: '0.5rem', background: '#374151', padding: '0.2rem'}}
@@ -2840,17 +3241,22 @@ function App() {
                               placeholder="Назва / Модель" 
                               style={{height: 'auto'}}
                             />
-                            {activeDropdown === `${groupKey}-${item.id}` && productDatabase[categoryLabel] && productDatabase[categoryLabel].filter(n => n.toLowerCase().includes((item.name || "").toLowerCase())).length > 0 && (
+                            {activeDropdown === `${groupKey}-${item.id}` && dropdownSource.filter(n => n.toLowerCase().includes((item.name || "").toLowerCase())).length > 0 && (
                                <div className="autocomplete-dropdown">
-                                 {productDatabase[categoryLabel].filter(n => n.toLowerCase().includes((item.name || "").toLowerCase())).map(n => (
-                                    <div key={n} className="autocomplete-item" onMouseDown={() => applyProductFromCatalog(groupKey, item.id, n, categoryLabel)}>
+                                 {dropdownSource.filter(n => n.toLowerCase().includes((item.name || "").toLowerCase())).map(n => (
+                                    <div key={n} className="autocomplete-item" onMouseDown={() => applyProductFromCatalog(groupKey, item.id, n, isProductMainGroup ? 'Основне обладнання' : categoryLabel)}>
                                       {n}
                                     </div>
                                  ))}
                                </div>
                             )}
+                            {toNumber(item.taxDistributedUsd, 0) > 0 && (
+                              <div style={{marginTop: '0.25rem', fontSize: '0.76rem', color: '#fbbf24'}}>
+                                + Податок: ${formatMoney(item.taxDistributedUsd)} (по ${formatMoney(item.taxDistributedPerUnitUsd || 0)}/од.) · Ціна: ${formatMoney(item.priceBaseUsd ?? (toNumber(item.price, 0) - toNumber(item.taxDistributedPerUnitUsd, 0)))} → ${formatMoney(item.price)}
+                              </div>
+                            )}
                           </div>
-                          {item.type === "ФЕП" && (
+                          {projectType !== 'product' && item.type === "ФЕП" && (
                             <div className="flex items-center" style={{marginLeft: '0.5rem', gap: '0.3rem', background: 'rgba(250, 204, 21, 0.1)', padding: '0.1rem 0.4rem', borderRadius: '4px', border: '1px solid rgba(250, 204, 21, 0.3)', width: '100%'}}>
                                <span style={{fontSize: '0.75rem', color: 'var(--accent-yellow)'}}>Wp:</span>
                                <input 
@@ -2913,7 +3319,9 @@ function App() {
                   <td className="text-right font-bold text-blue">${formatMoney(calculations.groupTotalsUsd[groupKey])}</td>
                   <td className="text-right font-bold text-blue">₴{formatMoney(calculations.groupTotalsUah[groupKey])}</td>
                   <td className="text-right font-bold text-blue internal-only">${formatMoney(calculations.groupCostTotalsUsd[groupKey])}</td>
-                  <td colSpan="3"></td>
+                  <td colSpan="3" className="text-right" style={{fontSize: '0.78rem', color: '#fbbf24'}}>
+                    {toNumber(getDistributedTaxByGroup(groupKey), 0) > 0 ? `Податок у розділі: $${formatMoney(getDistributedTaxByGroup(groupKey))}` : ''}
+                  </td>
                 </tr>
               </tbody>
             ));
@@ -2927,8 +3335,8 @@ function App() {
             <h2 style={{margin: 0}}>Монтаж та запуск станції (Комерційний шаблон)</h2>
             <button type="button" className="secondary" onClick={() => addItem(setWorkItems, "Нова робота / витрата")}>+ Додати позицію</button>
           </div>
-          <div className="flex" style={{gap: '1rem', padding: '0 1.5rem 1.5rem'}}>
-            <div style={{flex: 1}}>
+          <div style={{padding: '0 1.5rem 1.5rem'}}>
+            <div>
               <table style={{border: '1px solid var(--border-color)'}}>
                 <thead>
                   <tr style={{backgroundColor: '#1E1E1E'}}>
@@ -2965,6 +3373,33 @@ function App() {
                       <td className="text-center"><button type="button" className="danger" onClick={() => removeItem(setWorkItems, it.id)}>✕</button></td>
                     </tr>
                   ))}
+                  <tr>
+                     <td>
+                       <div className="equipment-name-input" style={{display: 'flex', alignItems: 'center', minHeight: '42px'}}>Монтаж і пусконалагоджувальні роботи (% від вартості робіт)</div>
+                       {toNumber(installPercentTaxUsd, 0) > 0 && (
+                         <div style={{marginTop: '0.25rem', fontSize: '0.76rem', color: '#fbbf24'}}>
+                           + Податок: ${formatMoney(installPercentTaxUsd)} · Ціна: ${formatMoney(installPercentOnlyUsd)} → ${formatMoney(installPercentOnlyUsd + installPercentTaxUsd)}
+                         </div>
+                       )}
+                     </td>
+                     <td><input type="number" className="text-right" value={1} readOnly /></td>
+                     <td className="col-currency"><select value="USD" disabled><option value="USD">$</option></select></td>
+                     <td><input type="number" className="text-right" value={installPercentOnlyUsd + toNumber(installPercentTaxUsd, 0)} readOnly /></td>
+                     <td className="text-right font-bold col-readonly">₴{formatMoney((installPercentOnlyUsd + toNumber(installPercentTaxUsd, 0)) * toNumber(rates.usd, 0))}</td>
+                     <td className="text-right font-bold text-blue col-readonly">${formatMoney(installPercentOnlyUsd + toNumber(installPercentTaxUsd, 0))}</td>
+                     <td className="text-right font-bold text-blue col-readonly">₴{formatMoney((installPercentOnlyUsd + toNumber(installPercentTaxUsd, 0)) * toNumber(rates.usd, 0))}</td>
+                     <td className="internal-only"><input type="number" className="text-right" value={0} readOnly /></td>
+                     <td>
+                       <div className="flex items-center" style={{gap: '0.35rem'}}>
+                         <input type="number" className="text-right" value={installPercent} disabled={!autoInstallPercentEnabled} onChange={(e) => { setInstallPercent(parseNumberInput(e.target.value)); resetTaxDistributionState(); }} />
+                         <label style={{fontSize: '0.72rem', color: 'var(--text-muted)', whiteSpace: 'nowrap'}}>
+                           <input type="checkbox" checked={autoInstallPercentEnabled} onChange={(e) => { setAutoInstallPercentEnabled(e.target.checked); resetTaxDistributionState(); }} /> авто
+                         </label>
+                       </div>
+                     </td>
+                     <td className="text-right font-bold text-yellow col-readonly internal-only">${formatMoney(installPercentOnlyUsd + toNumber(installPercentTaxUsd, 0))}</td>
+                     <td></td>
+                  </tr>
                   <tr className="group-summary-row">
                      <td colSpan="6" className="text-right font-bold">Всього за монтажем та запуском:</td>
                      <td className="text-right font-bold text-blue">${formatMoney(calculations.workItemsSumUsd)}</td>
@@ -2977,21 +3412,6 @@ function App() {
                 </tbody>
               </table>
             </div>
-            <div className="input-group" style={{minWidth: '250px', background: 'rgba(59, 130, 246, 0.05)', padding: '1.5rem', borderRadius: '8px', border: '1px solid rgba(59, 130, 246, 0.2)'}}>
-              <label style={{color: 'var(--accent-blue)', fontWeight: 'bold'}}>Додатковий % за монтаж</label>
-              <div style={{fontSize: '0.75rem', color: 'var(--text-muted)', marginBottom: '0.5rem'}}>(від вартості обладнання)</div>
-              <div className="flex items-center" style={{gap: '1rem'}}>
-                <input type="number" style={{width: '80px', fontSize: '1.2rem', fontWeight: 'bold'}} value={installPercent} onChange={(e) => setInstallPercent(parseNumberInput(e.target.value))} />
-                <div style={{flex: 1}}>
-                  <div className="font-bold text-blue" style={{fontSize: '1.2rem'}}>${formatMoney(installPercentOnlyUsd)}</div>
-                  <div style={{fontSize: '0.85rem', color: 'var(--text-muted)'}}>₴{formatMoney(installPercentOnlyUah)}</div>
-                </div>
-              </div>
-              <div style={{marginTop: '0.9rem', borderTop: '1px solid rgba(59, 130, 246, 0.2)', paddingTop: '0.8rem'}}>
-                <div style={{fontSize: '0.78rem', color: 'var(--text-muted)'}}>Частка блоку монтаж/запуск від вартості товару</div>
-                <div className="font-bold" style={{fontSize: '1.1rem', color: 'var(--accent-yellow)'}}>{commercialServicePercent.toFixed(1)}%</div>
-              </div>
-            </div>
           </div>
         </div>
       )}
@@ -3002,64 +3422,93 @@ function App() {
             <h2 style={{margin: 0}}>Монтажні роботи</h2>
             <button type="button" className="secondary" onClick={() => addItem(setWorkItems, "Новий вид робіт")}>+ Додати роботу</button>
           </div>
-          <div className="flex" style={{gap: '1rem', padding: '0 1.5rem 1.5rem'}}>
-            <div style={{flex: 1}}>
-              <table style={{border: '1px solid var(--border-color)'}}>
-                <thead>
-                  <tr style={{backgroundColor: '#1E1E1E'}}>
-                    <th className="col-name text-left">Найменування робіт</th>
-                    <th className="col-qty text-right">Кіл-ть</th>
-                    <th className="col-currency text-center">Вал.</th>
-                    <th className="col-price text-right">Ціна (од)</th>
-                    <th className="col-price text-right">Ціна (₴)</th>
-                    <th className="col-readonly text-right">Сума ($)</th>
-                    <th className="col-readonly text-right">Сума (₴)</th>
-                    <th className="col-price text-right internal-only">Собів. ($)</th>
-                    <th className="col-markup text-right">Націнка %</th>
-                    <th className="col-readonly text-right internal-only">Маржа ($)</th>
-                    <th style={{width: '50px'}}></th>
+          <div style={{padding: '0 1.5rem 1.5rem'}}>
+            <table style={{border: '1px solid var(--border-color)'}}>
+              <thead>
+                <tr style={{backgroundColor: '#1E1E1E'}}>
+                  <th className="col-name text-left">Найменування робіт</th>
+                  <th className="col-qty text-right">Кіл-ть</th>
+                  <th className="col-currency text-center">Вал.</th>
+                  <th className="col-price text-right">Ціна (од)</th>
+                  <th className="col-price text-right">Ціна (₴)</th>
+                  <th className="col-readonly text-right">Сума ($)</th>
+                  <th className="col-readonly text-right">Сума (₴)</th>
+                  <th className="col-price text-right internal-only">Собів. ($)</th>
+                  <th className="col-markup text-right">Націнка %</th>
+                  <th className="col-readonly text-right internal-only">Маржа ($)</th>
+                  <th style={{width: '50px'}}></th>
+                </tr>
+              </thead>
+              <tbody>
+                {calculations.processedWorkItems.map(it => (
+                  <tr key={it.id}>
+                    <td>
+                      <input type="text" className="equipment-name-input" value={it.name} onChange={(e) => updateList(workItems, setWorkItems, it.id, 'name', e.target.value)} placeholder="Назва робіт" />
+                      {toNumber(it.taxDistributedUsd, 0) > 0 && (
+                        <div style={{marginTop: '0.25rem', fontSize: '0.76rem', color: '#fbbf24'}}>
+                          + Податок: ${formatMoney(it.taxDistributedUsd)} (по ${formatMoney(it.taxDistributedPerUnitUsd || 0)}/од.) · Ціна: ${formatMoney(it.priceBaseUsd ?? (toNumber(it.price, 0) - toNumber(it.taxDistributedPerUnitUsd, 0)))} → ${formatMoney(it.price)}
+                        </div>
+                      )}
+                    </td>
+                    <td><input type="number" className="text-right" value={it.quantity} onChange={(e) => updateList(workItems, setWorkItems, it.id, 'quantity', e.target.value)} /></td>
+                    <td className="col-currency">
+                      <select value={it.currency} onChange={(e) => updateList(workItems, setWorkItems, it.id, 'currency', e.target.value)}>
+                        <option value="USD">$</option><option value="EUR">€</option><option value="UAH">₴</option>
+                      </select>
+                    </td>
+                    <td><input type="number" className="text-right" value={it.price} onChange={(e) => updateList(workItems, setWorkItems, it.id, 'price', e.target.value)} /></td>
+                    <td className="text-right font-bold col-readonly">₴{formatMoney(it.priceUah)}</td>
+                    <td className="text-right font-bold text-blue col-readonly">${formatMoney(it.sumUsd)}</td>
+                    <td className="text-right font-bold text-blue col-readonly">₴{formatMoney(it.sumUah)}</td>
+                    <td className="internal-only"><input type="number" className="text-right" value={it.incomingPrice || 0} onChange={(e) => updateList(workItems, setWorkItems, it.id, 'incomingPrice', e.target.value)} /></td>
+                    <td><input type="number" className="text-right" value={roundMarkupForInput(it.markupPercent)} onChange={(e) => updateList(workItems, setWorkItems, it.id, 'markupPercent', e.target.value)} /></td>
+                    <td className="text-right font-bold text-yellow col-readonly internal-only">${formatMoney((it.sumUsd || 0) - (it.costUsd || 0))}</td>
+                    <td className="text-center"><button type="button" className="danger" onClick={() => removeItem(setWorkItems, it.id)}>✕</button></td>
                   </tr>
-                </thead>
-                <tbody>
-                  {calculations.processedWorkItems.map(it => (
-                    <tr key={it.id}>
-                      <td><input type="text" className="equipment-name-input" value={it.name} onChange={(e) => updateList(workItems, setWorkItems, it.id, 'name', e.target.value)} placeholder="Назва робіт" /></td>
-                      <td><input type="number" className="text-right" value={it.quantity} onChange={(e) => updateList(workItems, setWorkItems, it.id, 'quantity', e.target.value)} /></td>
-                      <td className="col-currency">
-                        <select value={it.currency} onChange={(e) => updateList(workItems, setWorkItems, it.id, 'currency', e.target.value)}>
-                          <option value="USD">$</option><option value="EUR">€</option><option value="UAH">₴</option>
-                        </select>
-                      </td>
-                      <td><input type="number" className="text-right" value={it.price} onChange={(e) => updateList(workItems, setWorkItems, it.id, 'price', e.target.value)} /></td>
-                      <td className="text-right font-bold col-readonly">₴{formatMoney(it.priceUah)}</td>
-                      <td className="text-right font-bold text-blue col-readonly">${formatMoney(it.sumUsd)}</td>
-                      <td className="text-right font-bold text-blue col-readonly">₴{formatMoney(it.sumUah)}</td>
-                      <td className="internal-only"><input type="number" className="text-right" value={it.incomingPrice || 0} onChange={(e) => updateList(workItems, setWorkItems, it.id, 'incomingPrice', e.target.value)} /></td>
-                      <td><input type="number" className="text-right" value={roundMarkupForInput(it.markupPercent)} onChange={(e) => updateList(workItems, setWorkItems, it.id, 'markupPercent', e.target.value)} /></td>
-                      <td className="text-right font-bold text-yellow col-readonly internal-only">${formatMoney((it.sumUsd || 0) - (it.costUsd || 0))}</td>
-                      <td className="text-center"><button type="button" className="danger" onClick={() => removeItem(setWorkItems, it.id)}>✕</button></td>
-                    </tr>
-                  ))}
-                  <tr className="group-summary-row">
-                     <td colSpan="6" className="text-right font-bold">Всього за роботами:</td>
-                     <td className="text-right font-bold text-blue">${formatMoney(calculations.workItemsSumUsd)}</td>
-                     <td className="text-right font-bold text-blue">₴{formatMoney(calculations.workItemsSumUah)}</td>
-                     <td className="text-right font-bold internal-only">${formatMoney(calculations.workItemsCostUsd || 0)}</td>
-                     <td></td>
-                     <td className="text-right font-bold text-yellow internal-only">${formatMoney(calculations.workItemsMarginUsd || 0)}</td>
-                     <td></td>
-                  </tr>
-                </tbody>
-              </table>
-            </div>
-            <div className="input-group" style={{minWidth: '250px', background: 'rgba(59, 130, 246, 0.05)', padding: '1.5rem', borderRadius: '8px', border: '1px solid rgba(59, 130, 246, 0.2)'}}>
-              <label style={{color: 'var(--accent-blue)', fontWeight: 'bold'}}>Додатковий % за монтаж</label>
-              <div style={{fontSize: '0.75rem', color: 'var(--text-muted)', marginBottom: '0.5rem'}}>(від вартості обладнання)</div>
+                ))}
+                <tr className="group-summary-row">
+                  <td colSpan="5" className="text-right font-bold">Всього за роботами:</td>
+                  <td className="text-right font-bold text-blue">${formatMoney(calculations.workItemsSumUsd + installPercentOnlyUsd + toNumber(installPercentTaxUsd, 0))}</td>
+                  <td className="text-right font-bold text-blue">₴{formatMoney((calculations.workItemsSumUsd + installPercentOnlyUsd + toNumber(installPercentTaxUsd, 0)) * toNumber(rates.usd, 0))}</td>
+                  <td className="text-right font-bold internal-only">${formatMoney(calculations.workItemsCostUsd || 0)}</td>
+                  <td colSpan="3" className="text-right font-bold text-yellow">
+                    <span style={{marginRight: '0.75rem'}}>${formatMoney((calculations.workItemsMarginUsd || 0) + installPercentOnlyUsd + toNumber(installPercentTaxUsd, 0))}</span>
+                    {toNumber((calculations.processedWorkItems || []).reduce((acc, item) => acc + toNumber(item.taxDistributedUsd, 0), 0) + toNumber(installPercentTaxUsd, 0), 0) > 0
+                      ? `Податок у розділі: $${formatMoney((calculations.processedWorkItems || []).reduce((acc, item) => acc + toNumber(item.taxDistributedUsd, 0), 0) + toNumber(installPercentTaxUsd, 0))}`
+                      : ''}
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+            <div
+              style={{
+                width: '100%',
+                marginTop: '0.9rem',
+                border: '1px solid var(--border-color)',
+                borderRadius: '12px',
+                background: 'linear-gradient(180deg, rgba(14, 116, 144, 0.12), rgba(15, 23, 42, 0.35))',
+                padding: '1rem 1.1rem',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+                gap: '1rem',
+                flexWrap: 'wrap'
+              }}
+            >
+              <div>
+                <div style={{fontSize: '2rem', fontWeight: 800, color: '#cbd5e1', lineHeight: 1}}>Додатковий % за монтаж</div>
+                <div style={{fontSize: '1.1rem', color: 'var(--text-muted)', marginTop: '0.25rem'}}>(від вартості обладнання)</div>
+              </div>
               <div className="flex items-center" style={{gap: '1rem'}}>
-                <input type="number" style={{width: '80px', fontSize: '1.2rem', fontWeight: 'bold'}} value={installPercent} onChange={(e) => setInstallPercent(parseNumberInput(e.target.value))} />
-                <div style={{flex: 1}}>
-                  <div className="font-bold text-blue" style={{fontSize: '1.2rem'}}>${formatMoney(installPercentOnlyUsd)}</div>
-                  <div style={{fontSize: '0.85rem', color: 'var(--text-muted)'}}>₴{formatMoney(installPercentOnlyUah)}</div>
+                <input
+                  type="number"
+                  style={{width: '120px', fontSize: '2rem', fontWeight: 800, padding: '0.45rem 0.6rem'}}
+                  value={installPercent}
+                  onChange={(e) => { setInstallPercent(parseNumberInput(e.target.value)); resetTaxDistributionState(); }}
+                />
+                <div>
+                  <div className="font-bold text-blue" style={{fontSize: '2.2rem', lineHeight: 1}}>${formatMoney(installPercentOnlyUsd)}</div>
+                  <div style={{fontSize: '1.8rem', color: 'var(--text-muted)', marginTop: '0.2rem'}}>₴{formatMoney(installPercentOnlyUah)}</div>
                 </div>
               </div>
             </div>
@@ -3092,7 +3541,14 @@ function App() {
             <tbody>
               {calculations.processedOtherExpenses.map(exp => (
                 <tr key={exp.id}>
-                  <td><input type="text" className="equipment-name-input" value={exp.name} onChange={(e) => updateList(otherExpenses, setOtherExpenses, exp.id, 'name', e.target.value)} placeholder="Назва витрати" /></td>
+                  <td>
+                    <input type="text" className="equipment-name-input" value={exp.name} onChange={(e) => updateList(otherExpenses, setOtherExpenses, exp.id, 'name', e.target.value)} placeholder="Назва витрати" />
+                    {toNumber(exp.taxDistributedUsd, 0) > 0 && (
+                      <div style={{marginTop: '0.25rem', fontSize: '0.76rem', color: '#fbbf24'}}>
+                        + Податок: ${formatMoney(exp.taxDistributedUsd)} (по ${formatMoney(exp.taxDistributedPerUnitUsd || 0)}/од.) · Ціна: ${formatMoney(exp.priceBaseUsd ?? (toNumber(exp.price, 0) - toNumber(exp.taxDistributedPerUnitUsd, 0)))} → ${formatMoney(exp.price)}
+                      </div>
+                    )}
+                  </td>
                   <td><input type="number" className="text-right" value={exp.quantity} onChange={(e) => updateList(otherExpenses, setOtherExpenses, exp.id, 'quantity', e.target.value)} /></td>
                   <td className="col-currency">
                     <select value={exp.currency} onChange={(e) => updateList(otherExpenses, setOtherExpenses, exp.id, 'currency', e.target.value)}>
@@ -3110,13 +3566,16 @@ function App() {
                 </tr>
               ))}
               <tr className="group-summary-row">
-                 <td colSpan="6" className="text-right font-bold">Всього за іншими витратами:</td>
+                 <td colSpan="5" className="text-right font-bold">Всього за іншими витратами:</td>
                  <td className="text-right font-bold text-blue">${formatMoney(calculations.otherCostsUsd)}</td>
                  <td className="text-right font-bold text-blue">₴{formatMoney(calculations.otherCostsUah)}</td>
                  <td className="text-right font-bold internal-only">${formatMoney(calculations.otherCostsCostUsd || 0)}</td>
-                 <td></td>
-                 <td className="text-right font-bold text-yellow">${formatMoney(calculations.otherCostsMarginUsd || 0)}</td>
-                 <td></td>
+                 <td colSpan="3" className="text-right font-bold text-yellow">
+                   <span style={{marginRight: '0.75rem'}}>${formatMoney(calculations.otherCostsMarginUsd || 0)}</span>
+                   {toNumber((calculations.processedOtherExpenses || []).reduce((acc, item) => acc + toNumber(item.taxDistributedUsd, 0), 0), 0) > 0
+                     ? `Податок у розділі: $${formatMoney((calculations.processedOtherExpenses || []).reduce((acc, item) => acc + toNumber(item.taxDistributedUsd, 0), 0))}`
+                     : ''}
+                 </td>
               </tr>
             </tbody>
           </table>
@@ -3128,13 +3587,15 @@ function App() {
           <div>
             <h2>Резюме проєкту</h2>
             <div className="summary-list" style={{marginTop: '1rem'}}>
-              <div className="flex justify-between py-1 border-b">
-                <span>Проєктна потужність станції:</span>
-                <span className="font-bold text-yellow" style={{fontSize: '1.2rem'}}>{calculations.stationPowerW.toFixed(0)} Вт</span>
-              </div>
+              {projectType !== 'product' && (
+                <div className="flex justify-between py-1 border-b">
+                  <span>Проєктна потужність станції:</span>
+                  <span className="font-bold text-yellow" style={{fontSize: '1.2rem'}}>{calculations.stationPowerW.toFixed(0)} Вт</span>
+                </div>
+              )}
               {/* БЛОК ОБЛАДНАННЯ */}
               <div className="summary-block" style={{background: 'rgba(30, 41, 59, 0.5)', borderRadius: '8px', padding: '1rem', marginBottom: '1.5rem', border: '1px solid rgba(148, 163, 184, 0.1)'}}>
-                <div style={{fontSize: '0.9rem', textTransform: 'uppercase', letterSpacing: '0.05em', color: '#94a3b8', marginBottom: '0.75rem', fontWeight: 'bold'}}>📦 ОБЛАДНАННЯ</div>
+                <div style={{fontSize: '0.9rem', textTransform: 'uppercase', letterSpacing: '0.05em', color: '#94a3b8', marginBottom: '0.75rem', fontWeight: 'bold'}}>{projectType === 'product' ? '🛒 ТОВАРИ' : '📦 ОБЛАДНАННЯ'}</div>
                 <div className="flex justify-between py-1">
                   <span>Загальна вартість обладнання:</span>
                   <span className="font-bold">${formatMoney(calculations.sums.materialsSumUsd)}</span>
@@ -3153,7 +3614,7 @@ function App() {
               </div>
               
               {/* БЛОК РОБІТ */}
-                {calculations.sums.installationTotalUsd > 0 && (
+                {projectType !== 'product' && calculations.sums.installationTotalUsd > 0 && (
                 <div className="summary-block" style={{background: 'rgba(30, 41, 59, 0.5)', borderRadius: '8px', padding: '1rem', marginBottom: '1.5rem', border: '1px solid rgba(148, 163, 184, 0.1)'}}>
                   <div style={{fontSize: '0.9rem', textTransform: 'uppercase', letterSpacing: '0.05em', color: '#94a3b8', marginBottom: '0.75rem', fontWeight: 'bold'}}>🛠️ РОБОТИ ТА ПОСЛУГИ</div>
                   
@@ -3222,21 +3683,26 @@ function App() {
 
             <div className="flex items-center internal-only" style={{gap: '1rem', marginTop: '1.5rem', marginBottom: '1.5rem'}}>
               <div className="input-group" style={{margin: 0, flex: 1}}>
-                <label>Комісія менеджера (%) від маржі товару</label>
+                <label>Комісія менеджера (%) від маржі замовлення</label>
                 <input type="number" value={managerCommissionRate} onChange={(e) => setManagerCommissionRate(parseNumberInput(e.target.value))} />
               </div>
               <div className="input-group" style={{margin: 0, flex: 1}}>
                 <label>Сума комісії ($)</label>
-                <div className="font-bold" style={{color: '#fff', background: '#173f7a', padding: '0.6rem', borderRadius: '4px', border: '1px solid var(--border-color)'}}>${formatMoney(calculations.sums.managerCommissionUsd)}</div>
+                <div className="font-bold" style={{color: '#fff', background: '#173f7a', padding: '0.6rem', borderRadius: '4px', border: '1px solid var(--border-color)'}}>${formatMoney(calculations.sums.managerCommissionBeforeTaxesUsd || 0)}</div>
               </div>
             </div>
             
             <div className="summary-card internal-only" style={{marginTop: '2rem'}}>
               <div className="summary-item highlight">
-                <h3>Кінцева чиста маржа (Прибуток компанії)</h3>
-                <div className="summary-value" style={{color: 'var(--accent-green)'}}>${formatMoney(calculations.sums.netMarginUsd)}</div>
+                <h3>Загальна маржа замовлення (до податків)</h3>
+                <div className="summary-value" style={{color: 'var(--accent-yellow)'}}>${formatMoney(calculations.sums.grossMarginBeforeTaxesUsd || 0)}</div>
+              </div>
+              <div className="summary-item highlight" style={{marginTop: '1rem'}}>
+                <h3>Чиста маржа до податків</h3>
+                <div className="summary-value" style={{color: '#93c5fd'}}>${formatMoney(calculations.sums.netMarginBeforeTaxesUsd || 0)}</div>
               </div>
             </div>
+
           </div>
 
           <div>
@@ -3245,6 +3711,154 @@ function App() {
               <label>Знижка клієнту (%)</label>
               <input type="number" value={clientDiscountPercent} onChange={(e) => setClientDiscountPercent(parseNumberInput(e.target.value))} />
             </div>
+            <div className="input-group" style={{marginBottom: '1rem'}}>
+              <label>Податковий режим</label>
+              <select value={taxMode} onChange={(e) => setTaxMode(e.target.value)}>
+                {Object.entries(TAX_MODES).map(([key, label]) => (
+                  <option key={key} value={key}>{label}</option>
+                ))}
+              </select>
+            </div>
+            {taxMode === 'fop7' && (
+              <div className="input-group" style={{marginBottom: '1rem'}}>
+                <label>% податку ФОП</label>
+                <input type="number" min="0" step="0.1" value={fopTaxPercent} onChange={(e) => { setFopTaxPercent(parseNumberInput(e.target.value)); resetTaxDistributionState(); }} />
+              </div>
+            )}
+            {taxMode === 'fop_advanced' && (
+              <>
+                <div className="input-group" style={{marginBottom: '0.75rem'}}>
+                  <label>% податку ФОП+ (7-9)</label>
+                  <input type="number" min="7" max="9" step="0.1" value={advancedFopPercent} onChange={(e) => setAdvancedFopPercent(parseNumberInput(e.target.value))} />
+                </div>
+                <div className="input-group" style={{marginBottom: '0.75rem'}}>
+                  <label>База оподаткування</label>
+                  <select value={advancedFopBaseMode} onChange={(e) => setAdvancedFopBaseMode(e.target.value)}>
+                    <option value="all_goods">Весь товар</option>
+                    <option value="groups">Обрані групи</option>
+                    <option value="items">Окремі товари</option>
+                  </select>
+                </div>
+                {advancedFopBaseMode === 'groups' && (
+                  <div style={{marginBottom: '0.75rem', fontSize: '0.86rem'}}>
+                    <div style={{display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.45rem'}}>
+                      <button
+                        type="button"
+                        className="secondary"
+                        style={{padding: '0.3rem 0.6rem', fontSize: '0.78rem', background: '#0f766e'}}
+                        onClick={() => {
+                          const percent = Math.max(7, Math.min(9, toNumber(advancedFopPercent, 7)));
+                          setAdvancedFopGroupPercents((prev) => {
+                            const next = { ...prev };
+                            advancedFopSelectedGroups.forEach((gk) => { next[gk] = percent; });
+                            return next;
+                          });
+                        }}
+                      >
+                        Застосувати % до всіх вибраних
+                      </button>
+                    </div>
+                    {Object.keys(calculations.groups || {}).map((gk) => (
+                      <div key={gk} style={{display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.25rem'}}>
+                        <label style={{flex: 1}}>
+                          <input
+                            type="checkbox"
+                            checked={advancedFopSelectedGroups.includes(gk)}
+                            onChange={(e) => setAdvancedFopSelectedGroups((prev) => e.target.checked ? [...new Set([...prev, gk])] : prev.filter(x => x !== gk))}
+                          /> {gk}
+                        </label>
+                        <input
+                          type="number"
+                          min="7"
+                          max="9"
+                          step="0.1"
+                          style={{width: '74px'}}
+                          value={toNumber(advancedFopGroupPercents[gk], toNumber(advancedFopPercent, 7))}
+                          onChange={(e) => setAdvancedFopGroupPercents((prev) => ({ ...prev, [gk]: parseNumberInput(e.target.value) }))}
+                        />
+                      </div>
+                    ))}
+                  </div>
+                )}
+                {advancedFopBaseMode === 'items' && (
+                  <div style={{marginBottom: '0.75rem', fontSize: '0.86rem', maxHeight: '180px', overflow: 'auto', border: '1px solid var(--border-color)', padding: '0.5rem', borderRadius: '6px'}}>
+                    <div style={{display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.45rem'}}>
+                      <button
+                        type="button"
+                        className="secondary"
+                        style={{padding: '0.3rem 0.6rem', fontSize: '0.78rem', background: '#0f766e'}}
+                        onClick={() => {
+                          const percent = Math.max(7, Math.min(9, toNumber(advancedFopPercent, 7)));
+                          setAdvancedFopItemPercents((prev) => {
+                            const next = { ...prev };
+                            advancedFopSelectedItems.forEach((key) => { next[key] = percent; });
+                            return next;
+                          });
+                        }}
+                      >
+                        Застосувати % до всіх вибраних
+                      </button>
+                    </div>
+                    {Object.entries(calculations.groups || {}).map(([gk, rows]) => (
+                      <div key={gk}>
+                        <div style={{fontWeight: 700, marginTop: '0.25rem'}}>{gk}</div>
+                        {(rows || []).map((row) => {
+                          const key = `${gk}::${row.id}`;
+                          return (
+                            <div key={key} style={{display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.2rem'}}>
+                              <label style={{flex: 1}}>
+                                <input
+                                  type="checkbox"
+                                  checked={advancedFopSelectedItems.includes(key)}
+                                  onChange={(e) => setAdvancedFopSelectedItems((prev) => e.target.checked ? [...new Set([...prev, key])] : prev.filter(x => x !== key))}
+                                /> {row.name || '(без назви)'} (${formatMoney(row.sumUsd || 0)})
+                              </label>
+                              <input
+                                type="number"
+                                min="7"
+                                max="9"
+                                step="0.1"
+                                style={{width: '74px'}}
+                                value={toNumber(advancedFopItemPercents[key], toNumber(advancedFopPercent, 7))}
+                                onChange={(e) => setAdvancedFopItemPercents((prev) => ({ ...prev, [key]: parseNumberInput(e.target.value) }))}
+                              />
+                            </div>
+                          );
+                        })}
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </>
+            )}
+            {taxMode !== 'none' && taxMode !== 'vat' && taxMode !== 'fop_advanced' && (
+              <div className="input-group" style={{marginBottom: '0.75rem'}}>
+                <label>Режим розкиду податку</label>
+                <select value={taxDistributionScope} onChange={(e) => setTaxDistributionScope(e.target.value)}>
+                  {Object.entries(TAX_DISTRIBUTION_SCOPES).map(([key, label]) => (
+                    <option key={key} value={key}>{label}</option>
+                  ))}
+                </select>
+              </div>
+            )}
+            {taxMode !== 'none' && taxMode !== 'vat' && (
+              <div className="flex items-center" style={{gap: '0.5rem', marginBottom: '0.75rem'}}>
+                <button type="button" className="secondary" style={{background: '#0f766e'}} onClick={distributeTaxToGoods}>
+                  Розкинути податок
+                </button>
+                <button type="button" className="secondary" style={{background: '#475569'}} onClick={rollbackDistributedTax}>
+                  Відмінити розкид
+                </button>
+              </div>
+            )}
+            {taxMode !== 'none' && (
+              <div style={{fontSize: '0.9rem', color: 'var(--text-muted)', marginBottom: '0.6rem'}}>
+                Податки: <strong style={{color: 'var(--accent-yellow)'}}>${formatMoney(calculations.sums.taxesUsd || 0)}</strong>
+                {taxMode !== 'vat' && <span style={{marginLeft: '0.75rem'}}>
+                  · Розкинуто на товари: <strong style={{color: '#93c5fd'}}>${formatMoney(calculations.sums.distributedTaxUsdFromRows || 0)}</strong>
+                </span>}
+              </div>
+            )}
             {toNumber(calculations.sums.discountPercent, 0) > 0 && (
               <div style={{fontSize: '0.9rem', color: 'var(--text-muted)', marginBottom: '0.6rem'}}>
                 Сума знижки: <strong style={{color: 'var(--accent-yellow)'}}>${formatMoney(calculations.sums.discountUsd || 0)}</strong>
@@ -3266,6 +3880,26 @@ function App() {
                 <div className="text-right">
                   <div style={{fontSize: '0.8rem', opacity: '0.9'}}>Валюта EUR</div>
                   <div style={{fontSize: '1.5rem', fontWeight: '700'}}>€{formatMoney(calculations.sums.finalTotalWithDiscountEur)}</div>
+                </div>
+              </div>
+            </div>
+
+            <div className="summary-card internal-only" style={{marginTop: '1rem', border: '1px solid rgba(56, 189, 248, 0.35)'}}>
+              <div className="summary-item highlight">
+                <h3>Податки та чистий прибуток</h3>
+                <div style={{display: 'grid', gap: '0.45rem', marginTop: '0.75rem'}}>
+                  <div className="flex justify-between"><span>Режим податків:</span><strong>{TAX_MODES[taxMode] || TAX_MODES.none}</strong></div>
+                  <div className="flex justify-between"><span>Податки:</span><strong style={{color: 'var(--accent-yellow)'}}>${formatMoney(calculations.sums.taxesUsd || 0)} <span style={{opacity: 0.85}}>(₴{formatMoney(calculations.sums.taxesUah || 0)})</span></strong></div>
+                  {taxMode === 'vat' && (
+                    <>
+                      <div className="flex justify-between"><span>ПДВ товари 20%:</span><strong>${formatMoney(calculations.sums.vatGoodsUsd || 0)} <span style={{opacity: 0.85}}>(₴{formatMoney(calculations.sums.vatGoodsUah || 0)})</span></strong></div>
+                      <div className="flex justify-between"><span>ПДВ роботи 20%:</span><strong>${formatMoney(calculations.sums.vatWorksUsd || 0)} <span style={{opacity: 0.85}}>(₴{formatMoney(calculations.sums.vatWorksUah || 0)})</span></strong></div>
+                      <div className="flex justify-between"><span>Податок на чек 2%:</span><strong>${formatMoney(calculations.sums.vatReceiptUsd || 0)} <span style={{opacity: 0.85}}>(₴{formatMoney(calculations.sums.vatReceiptUah || 0)})</span></strong></div>
+                    </>
+                  )}
+                  <div className="flex justify-between"><span>Маржа після податків:</span><strong>${formatMoney(calculations.sums.marginAfterTaxesUsd || 0)} <span style={{opacity: 0.85}}>(₴{formatMoney(calculations.sums.marginAfterTaxesUah || 0)})</span></strong></div>
+                  <div className="flex justify-between"><span>Комісія менеджера (після податків):</span><strong>${formatMoney(calculations.sums.managerCommissionAfterTaxesUsd || 0)} <span style={{opacity: 0.85}}>(₴{formatMoney(calculations.sums.managerCommissionAfterTaxesUah || 0)})</span></strong></div>
+                  <div className="flex justify-between" style={{paddingTop: '0.35rem', borderTop: '1px dashed rgba(148,163,184,0.35)'}}><span>Чистий прибуток:</span><strong style={{color: 'var(--accent-green)'}}>${formatMoney(calculations.sums.netMarginUsd || 0)} <span style={{opacity: 0.85}}>(₴{formatMoney(calculations.sums.netMarginUah || 0)})</span></strong></div>
                 </div>
               </div>
             </div>
