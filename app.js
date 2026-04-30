@@ -2,7 +2,7 @@
 
 const { useState, useMemo, useEffect, useRef } = React;
 
-const expandableGroups = ["Захист PV", "Захист AC", "Захист DC", "Кріплення"];
+const expandableGroups = ["Захист PV", "Захист AC", "Захист DC"];
 const MAIN_TYPES = ["Інвертор", "ФЕП", "АКБ", "BMS", "MPPT контролер", "Cerbo", "Кліматична шафа", "Стійка", "Інше"];
 const PROTECTION_TYPES = ["Захист PV", "Захист AC", "Захист DC", "Інше"];
 const PROTECTION_GROUP_CHOICES = ["Захист PV", "Захист AC", "Захист DC", "Інше"];
@@ -72,6 +72,8 @@ const HV_BATTERY_BUNDLE_MAP = {
 const DEFAULT_RATES = { eur: 51.35, usd: 44.10 };
 const DEFAULT_CLIENT_INFO = { name: "", address: "" };
 const DEFAULT_OFFER_PURPOSE = "для власних потреб";
+const DEFAULT_COVER_SYSTEM_NAME = "";
+const COVER_PAGE_TYPES = ["Будинок", "Квартира", "Виробництво", "Наземна станція"];
 const DEFAULT_OTHER_EXPENSES = [{ id: 1, name: "Транспорт / ПММ", quantity: 1, price: 100, currency: "USD", incomingPrice: 0, markupPercent: 0 }];
 const DEFAULT_WORK_ITEMS = [{ id: 1, name: "Монтажні та пусконалагоджувальні роботи", quantity: 1, price: 0, currency: "USD", incomingPrice: 0, markupPercent: 0 }];
 const DEFAULT_COMMERCIAL_WORK_ITEMS = [
@@ -109,7 +111,7 @@ const createDefaultGroupSettings = () => ({
   "Захист PV": { mode: 'fixed', name: 'Захист PV', price: 0, incomingPrice: 0, currency: 'USD', unit: 'компл', quantity: 1, markupPercent: 0, pvTemplateStrings: 1, pvTemplateType: 'Стандарт', pvCableMetersPerString: 150, pvAutoCableQuantity: true },
   "Захист AC": { mode: 'fixed', name: 'Захист AC', price: 0, incomingPrice: 0, currency: 'USD', unit: 'компл', quantity: 1, markupPercent: 0 },
   "Захист DC": { mode: 'fixed', name: 'Захист DC', price: 0, incomingPrice: 0, currency: 'USD', unit: 'компл', quantity: 1, markupPercent: 0 },
-  "Кріплення": { mode: 'fixed', name: 'Кріплення (металочерепиця/профнастил)', price: 0, incomingPrice: 0, currency: 'USD', unit: 'компл', quantity: 1, markupPercent: 0 }
+  "Кріплення": { mode: 'detailed', name: 'Кріплення (металочерепиця/профнастил)', price: 0, incomingPrice: 0, currency: 'USD', unit: 'компл', quantity: 1, markupPercent: 0 }
 });
 const toNumber = (value, fallback = 0) => {
   if (value === null || value === undefined) return fallback;
@@ -320,6 +322,8 @@ function App() {
   const [modulePower, setModulePower] = useState(550);
   const [clientInfo, setClientInfo] = useState(() => getSaved('solar_clientInfo', DEFAULT_CLIENT_INFO));
   const [offerPurpose, setOfferPurpose] = useState(() => getSaved('solar_offerPurpose', DEFAULT_OFFER_PURPOSE));
+  const [coverSystemName, setCoverSystemName] = useState(() => getSaved('solar_coverSystemName', DEFAULT_COVER_SYSTEM_NAME));
+  const [coverPageType, setCoverPageType] = useState(() => getSaved('solar_coverPageType', COVER_PAGE_TYPES[0]));
   const [equipmentGroups, setEquipmentGroups] = useState(() => getSaved('solar_equipmentGroups', createDefaultGroups()));
   
   const [otherExpenses, setOtherExpenses] = useState(() => getSaved('solar_otherExpenses', cloneList(DEFAULT_OTHER_EXPENSES)));
@@ -346,6 +350,9 @@ function App() {
   const [projectType, setProjectType] = useState(() => getSaved('solar_projectType', 'commercial'));
   const [projectFolderName, setProjectFolderName] = useState(() => getSaved('solar_projectFolderName', ''));
   const [showNewProjectDialog, setShowNewProjectDialog] = useState(false);
+  const [showQuickCalc, setShowQuickCalc] = useState(false);
+  const [quickCalcExpr, setQuickCalcExpr] = useState('');
+  const [quickCalcResult, setQuickCalcResult] = useState('0');
   const [clientMode, setClientMode] = useState(() => getSaved('solar_clientMode', false));
   const [templates, setTemplates] = useState(() => {
     const saved = getSaved('solar_templates', []);
@@ -1029,6 +1036,8 @@ function App() {
     setWorkItems(Array.isArray(data.workItems) ? cloneList(data.workItems) : cloneList(DEFAULT_WORK_ITEMS));
     setOtherExpenses(Array.isArray(data.otherExpenses) ? cloneList(data.otherExpenses) : cloneList(DEFAULT_OTHER_EXPENSES));
     setOfferPurpose(typeof data.offerPurpose === 'string' ? data.offerPurpose : DEFAULT_OFFER_PURPOSE);
+    setCoverSystemName(typeof data.coverSystemName === 'string' ? data.coverSystemName : DEFAULT_COVER_SYSTEM_NAME);
+    setCoverPageType(typeof data.coverPageType === 'string' ? data.coverPageType : COVER_PAGE_TYPES[0]);
     setInstallPercent(data.installPercent ?? 15);
     setRates(data.rates && typeof data.rates === 'object' ? data.rates : DEFAULT_RATES);
     setClientInfo(data.clientInfo && typeof data.clientInfo === 'object' ? data.clientInfo : DEFAULT_CLIENT_INFO);
@@ -1056,6 +1065,8 @@ function App() {
     setWorkItems(Array.isArray(data.workItems) ? cloneList(data.workItems) : cloneList(DEFAULT_WORK_ITEMS));
     setOtherExpenses(Array.isArray(data.otherExpenses) ? cloneList(data.otherExpenses) : cloneList(DEFAULT_OTHER_EXPENSES));
     setOfferPurpose(typeof data.offerPurpose === 'string' ? data.offerPurpose : DEFAULT_OFFER_PURPOSE);
+    setCoverSystemName(typeof data.coverSystemName === 'string' ? data.coverSystemName : DEFAULT_COVER_SYSTEM_NAME);
+    setCoverPageType(typeof data.coverPageType === 'string' ? data.coverPageType : COVER_PAGE_TYPES[0]);
     setInstallPercent(data.installPercent ?? 15);
     setClientDiscountPercent(data.clientDiscountPercent ?? 0);
     setTaxMode(data.taxMode || 'none');
@@ -1090,6 +1101,8 @@ function App() {
         modulePower,
         clientInfo,
         offerPurpose,
+        coverSystemName,
+        coverPageType,
         equipmentGroups,
         otherExpenses,
         workItems,
@@ -1279,6 +1292,8 @@ function App() {
       data: {
         equipmentGroups,
         offerPurpose,
+        coverSystemName,
+        coverPageType,
         workItems,
         otherExpenses,
         installPercent,
@@ -1572,7 +1587,13 @@ function App() {
     const autoQty = prefix === "Кріплення" && autoMountingQuantity ? Math.max(0, Math.round(toNumber(totalPanelQuantity, 0))) : undefined;
     setGroupSettings(prev => ({
       ...prev,
-      [newGroupKey]: { ...template, ...baseSettings, ...(autoQty !== undefined ? { quantity: autoQty } : {}), name: newGroupKey, mode: 'fixed' }
+      [newGroupKey]: {
+        ...template,
+        ...baseSettings,
+        ...(autoQty !== undefined ? { quantity: autoQty } : {}),
+        name: newGroupKey,
+        mode: prefix === "Кріплення" ? 'detailed' : 'fixed'
+      }
     }));
   };
 
@@ -1990,6 +2011,8 @@ function App() {
   useEffect(() => { localStorage.setItem('solar_rates', JSON.stringify(rates)); }, [rates]);
   useEffect(() => { localStorage.setItem('solar_clientInfo', JSON.stringify(clientInfo)); }, [clientInfo]);
   useEffect(() => { localStorage.setItem('solar_offerPurpose', JSON.stringify(offerPurpose)); }, [offerPurpose]);
+  useEffect(() => { localStorage.setItem('solar_coverSystemName', JSON.stringify(coverSystemName)); }, [coverSystemName]);
+  useEffect(() => { localStorage.setItem('solar_coverPageType', JSON.stringify(coverPageType)); }, [coverPageType]);
   useEffect(() => { localStorage.setItem('solar_equipmentGroups', JSON.stringify(equipmentGroups)); }, [equipmentGroups]);
   useEffect(() => { localStorage.setItem('solar_otherExpenses', JSON.stringify(otherExpenses)); }, [otherExpenses]);
   useEffect(() => { localStorage.setItem('solar_workItems', JSON.stringify(workItems)); }, [workItems]);
@@ -2012,6 +2035,13 @@ function App() {
   useEffect(() => { localStorage.setItem('solar_groupSettings', JSON.stringify(groupSettings)); }, [groupSettings]);
   useEffect(() => { localStorage.setItem('solar_project_catalog_snapshots', JSON.stringify(projectCatalogSnapshots)); }, [projectCatalogSnapshots]);
   useEffect(() => { localStorage.setItem('solar_mountingTemplateSelection', JSON.stringify(mountingTemplateSelection)); }, [mountingTemplateSelection]);
+  useEffect(() => {
+    const nodes = document.querySelectorAll('.top-shell [data-title]');
+    nodes.forEach((el) => {
+      const tip = el.getAttribute('data-title');
+      if (tip && !el.getAttribute('title')) el.setAttribute('title', tip);
+    });
+  }, [layoutMode, menuCollapsed, clientMode, workspacePinned, workspaceHandle, templates.length]);
 
   const calculations = useMemo(() => {
     const usdRate = toNumber(rates.usd, 0);
@@ -2168,16 +2198,6 @@ function App() {
     const installationTotalUsd = installPercentAmountUsd + workItemsSumUsd;
     const installationTotalUah = (installPercentAmountUsd * safeUsdRate) + workItemsSumUah;
     
-    const marginMaterialsUsd = totals.sumUsd - totals.costUsd;
-    const marginWorksUsd = workItemsMarginUsd;
-    const marginTotalUsd = marginMaterialsUsd + marginWorksUsd; // Брудна маржа (обладнання + роботи)
-    
-    // Податки рахуємо від загальної маржі (до комісії менеджера)
-    const grossMarginBeforeTaxesUsd = marginTotalUsd;
-    // Комісія менеджера (до податків) — від загальної маржі замовлення
-    const managerCommissionBeforeTaxesUsd = Math.max(0, grossMarginBeforeTaxesUsd) * (toNumber(managerCommissionRate, 0) / 100);
-    const netMarginBeforeTaxesUsd = grossMarginBeforeTaxesUsd - managerCommissionBeforeTaxesUsd;
-
     const finalTotalUsd = totals.sumUsd + installationTotalUsd + logisticsTotalUsd;
     const discountPercent = Math.max(0, toNumber(clientDiscountPercent, 0));
     const discountUsd = finalTotalUsd * (discountPercent / 100);
@@ -2186,11 +2206,19 @@ function App() {
     const finalTotalEur = eurUsdRate > 0 ? (finalTotalUsd / eurUsdRate) : 0;
     const finalTotalWithDiscountUah = finalTotalWithDiscountUsd * safeUsdRate;
     const finalTotalWithDiscountEur = eurUsdRate > 0 ? (finalTotalWithDiscountUsd / eurUsdRate) : 0;
+    const marginMaterialsUsd = totals.sumUsd - totals.costUsd;
+    const marginWorksUsd = workItemsMarginUsd;
+    const marginTotalUsd = marginMaterialsUsd + marginWorksUsd; // Брудна маржа (обладнання + роботи)
     const materialsCostWithWorksUsd = totals.costUsd + workItemsCostUsd;
     const orderCostUsd = totals.costUsd + workItemsCostUsd + otherCostsCostUsd;
     const marginMaterialsPercent = totals.sumUsd > 0 ? (marginMaterialsUsd / totals.sumUsd) * 100 : 0;
     const marginWorksPercent = workItemsSumUsd > 0 ? (marginWorksUsd / workItemsSumUsd) * 100 : 0;
     const marginFromOrderPercent = finalTotalWithDiscountUsd > 0 ? (marginTotalUsd / finalTotalWithDiscountUsd) * 100 : 0;
+    // Маржа для виплат менеджеру/чистого прибутку — вже з урахуванням клієнтської знижки
+    const grossMarginBeforeTaxesUsd = marginTotalUsd - discountUsd;
+    // Комісія менеджера (до податків) — від маржі замовлення після знижки
+    const managerCommissionBeforeTaxesUsd = Math.max(0, grossMarginBeforeTaxesUsd) * (toNumber(managerCommissionRate, 0) / 100);
+    const netMarginBeforeTaxesUsd = grossMarginBeforeTaxesUsd - managerCommissionBeforeTaxesUsd;
     const materialsWithDiscountUsd = Math.max(0, totals.sumUsd - (discountUsd * (totals.sumUsd / (finalTotalUsd || 1))));
     const worksWithDiscountUsd = Math.max(0, installationTotalUsd - (discountUsd * (installationTotalUsd / (finalTotalUsd || 1))));
     const logisticsWithDiscountUsd = Math.max(0, logisticsTotalUsd - (discountUsd * (logisticsTotalUsd / (finalTotalUsd || 1))));
@@ -2202,7 +2230,8 @@ function App() {
     if (taxMode === 'fop7') {
       taxesUsd = finalTotalWithDiscountUsd * (Math.max(0, toNumber(fopTaxPercent, 7)) / 100);
     } else if (taxMode === 'vat') {
-      vatGoodsUsd = materialsWithDiscountUsd * 0.20;
+      const materialsMarginNoDiscountUsd = Math.max(0, marginMaterialsUsd);
+      vatGoodsUsd = materialsMarginNoDiscountUsd * 0.20;
       vatWorksUsd = worksWithDiscountUsd * 0.20;
       vatReceiptUsd = finalTotalWithDiscountUsd * 0.02;
       taxesUsd = vatGoodsUsd + vatWorksUsd + vatReceiptUsd;
@@ -2402,9 +2431,9 @@ function App() {
 
   const coverMainPowerKw = hasSolar ? solarPowerKw : inverterPowerKw;
   const coverPowerKnown = coverMainPowerKw > 0;
-  const coverMainTitle = isBackupSystem
-    ? (coverPowerKnown ? ("Безперебійна система " + formatKw(coverMainPowerKw) + " кВт") : "Безперебійна система")
-    : (coverPowerKnown ? ("Гібридна станція " + formatKw(coverMainPowerKw) + " кВт") : "Гібридна станція");
+  const coverSystemNameAuto = isBackupSystem ? "Безперебійна система" : "Гібридна станція";
+  const coverSystemNameFinal = (coverSystemName || '').trim() || coverSystemNameAuto;
+  const coverMainTitle = coverPowerKnown ? `${coverSystemNameFinal} ${formatKw(coverMainPowerKw)} кВт` : coverSystemNameFinal;
   const coverAddress = clientInfo.address || "____________________";
   const coverPowerLine = coverPowerKnown ? (formatKw(coverMainPowerKw) + " кВт") : "—";
   const coverBatteryLine = batteryKwh > 0 ? (formatKw(batteryKwh) + " кВт·год") : (hasBattery ? (batteryRows.reduce((acc, row) => acc + toNumber(row.quantity, 0), 0) + " шт.") : "—");
@@ -2412,6 +2441,8 @@ function App() {
     ? ((inverterPowerKw > 0 ? (formatKw(inverterPowerKw) + " кВт") : "—") + (inverterTotalUah > 0 ? (" · " + formatMoney(inverterTotalUah) + " грн") : ""))
     : "—";
   const coverSubtitle = (offerPurpose || DEFAULT_OFFER_PURPOSE).trim() || DEFAULT_OFFER_PURPOSE;
+  const orderBaseUsdForPercents = Math.max(0.000001, toNumber(calculations?.sums?.finalTotalWithDiscountUsd, 0));
+  const pctOfOrder = (value) => ((toNumber(value, 0) / orderBaseUsdForPercents) * 100).toFixed(1);
   const isSidebarLayout = layoutMode === 'sidebar';
   const menuToggleSymbol = isSidebarLayout
     ? (menuCollapsed ? '▶' : '◀')
@@ -2642,6 +2673,61 @@ function App() {
     setTaxDistributionApplied(false);
     setLockedDistributedTaxUsd(null);
   };
+  const safeEvalQuickCalc = (expr) => {
+    const normalized = String(expr || '').replace(',', '.').replace(/\s+/g, '');
+    if (!normalized) return '0';
+    if (!/^[\d+\-*/().]+$/.test(normalized)) return 'Помилка';
+    try {
+      const value = Function(`"use strict"; return (${normalized});`)();
+      if (!Number.isFinite(value)) return 'Помилка';
+      return String(Math.round(value * 1000000) / 1000000);
+    } catch (e) {
+      return 'Помилка';
+    }
+  };
+  const quickCalcAppend = (token) => {
+    const next = `${quickCalcExpr}${token}`;
+    setQuickCalcExpr(next);
+    setQuickCalcResult(safeEvalQuickCalc(next));
+  };
+  const quickCalcClearAll = () => {
+    setQuickCalcExpr('');
+    setQuickCalcResult('0');
+  };
+  useEffect(() => {
+    if (!showQuickCalc) return;
+    const onKeyDown = (e) => {
+      const k = e.key;
+      if (/^[0-9]$/.test(k) || ['+', '-', '*', '/', '(', ')', '.'].includes(k)) {
+        e.preventDefault();
+        quickCalcAppend(k);
+        return;
+      }
+      if (k === ',') {
+        e.preventDefault();
+        quickCalcAppend('.');
+        return;
+      }
+      if (k === 'Backspace') {
+        e.preventDefault();
+        const next = quickCalcExpr.slice(0, -1);
+        setQuickCalcExpr(next);
+        setQuickCalcResult(safeEvalQuickCalc(next));
+        return;
+      }
+      if (k === 'Escape') {
+        e.preventDefault();
+        quickCalcClearAll();
+        return;
+      }
+      if (k === 'Enter' || k === '=') {
+        e.preventDefault();
+        setQuickCalcResult(safeEvalQuickCalc(quickCalcExpr));
+      }
+    };
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, [showQuickCalc, quickCalcExpr]);
 
   return (
     <div className={`container ${clientMode ? 'client-mode' : ''} ${layoutMode === 'sidebar' ? 'layout-sidebar' : 'layout-classic'} ${menuCollapsed ? 'menu-collapsed' : ''}`}>
@@ -2655,7 +2741,7 @@ function App() {
         <div className="top-shell-main">
           <div className="top-meta">
             {isSidebarLayout && <div className="sidebar-badge">Solar CRM</div>}
-            <h1>Калькулятор СЕС v3.1</h1>
+            <h1>Калькулятор СЕС v4.6</h1>
             <div style={{fontSize: '0.92rem', color: 'var(--text-muted)', marginTop: '0.25rem'}}>
               Тип поточного проєкту: <strong style={{color: 'var(--accent-yellow)'}}>{PROJECT_TYPES[projectType] || PROJECT_TYPES.commercial}</strong>
             </div>
@@ -2758,7 +2844,22 @@ function App() {
         </div>
       </div>
 
-      <div className="card" style={{marginTop: '-0.25rem'}}><div className="input-group" style={{margin: 0}}><label>Підзаголовок КП</label><input type="text" value={offerPurpose} onChange={(e) => setOfferPurpose(e.target.value)} placeholder="для власних потреб / для підприємства / ..." /></div></div>
+      <div className="card grid grid-cols-3" style={{marginTop: '-0.25rem'}}>
+        <div className="input-group" style={{margin: 0}}>
+          <label>Підзаголовок КП</label>
+          <input type="text" value={offerPurpose} onChange={(e) => setOfferPurpose(e.target.value)} placeholder="для власних потреб / для підприємства / ..." />
+        </div>
+        <div className="input-group" style={{margin: 0}}>
+          <label>Назва системи для КП</label>
+          <input type="text" value={coverSystemName} onChange={(e) => setCoverSystemName(e.target.value)} placeholder={coverSystemNameAuto} />
+        </div>
+        <div className="input-group" style={{margin: 0}}>
+          <label>Тип титульної сторінки</label>
+          <select value={coverPageType} onChange={(e) => setCoverPageType(e.target.value)}>
+            {COVER_PAGE_TYPES.map((type) => <option key={type} value={type}>{type}</option>)}
+          </select>
+        </div>
+      </div>
 
       <div className="card grid grid-cols-4">
         <div className="input-group">
@@ -3121,7 +3222,7 @@ function App() {
                         </div>
                       </td>
                       <td><select value={item.unit} onChange={(e) => updateEquipment(groupKey, item.id, 'unit', e.target.value)}>{UNITS.map(u => <option key={u} value={u}>{u}</option>)}</select></td>
-                      <td><input type="number" className="text-right" value={item.quantity} onChange={(e) => updateEquipment(groupKey, item.id, 'quantity', e.target.value)} disabled={autoMountingQuantity} title={autoMountingQuantity ? 'Авто-кількість увімкнена' : ''} /></td>
+                      <td><input type="number" className="text-right" value={item.quantity} onChange={(e) => { if (autoMountingQuantity) setAutoMountingQuantity(false); updateEquipment(groupKey, item.id, 'quantity', e.target.value); }} title={autoMountingQuantity ? 'Авто-кількість увімкнена (при ручній зміні буде вимкнено)' : ''} /></td>
                       <td className="col-currency"><select value={item.currency} onChange={(e) => updateEquipment(groupKey, item.id, 'currency', e.target.value)} style={{padding: '0.4rem'}}><option value="USD">$</option><option value="EUR">€</option><option value="UAH">₴</option></select></td>
                       <td><input type="number" className="text-right" value={item.price} onChange={(e) => updateEquipment(groupKey, item.id, 'price', e.target.value)} /></td>
                       <td className="text-right font-bold col-readonly">{formatMoney(item.priceUah)}</td>
@@ -3695,11 +3796,17 @@ function App() {
             <div className="summary-card internal-only" style={{marginTop: '2rem'}}>
               <div className="summary-item highlight">
                 <h3>Загальна маржа замовлення (до податків)</h3>
-                <div className="summary-value" style={{color: 'var(--accent-yellow)'}}>${formatMoney(calculations.sums.grossMarginBeforeTaxesUsd || 0)}</div>
+                <div className="summary-value" style={{color: 'var(--accent-yellow)'}}>
+                  ${formatMoney(calculations.sums.grossMarginBeforeTaxesUsd || 0)}
+                  <span style={{fontSize: '0.85rem', marginLeft: '0.5rem', opacity: 0.85}}>({pctOfOrder(calculations.sums.grossMarginBeforeTaxesUsd || 0)}% від замовлення)</span>
+                </div>
               </div>
               <div className="summary-item highlight" style={{marginTop: '1rem'}}>
                 <h3>Чиста маржа до податків</h3>
-                <div className="summary-value" style={{color: '#93c5fd'}}>${formatMoney(calculations.sums.netMarginBeforeTaxesUsd || 0)}</div>
+                <div className="summary-value" style={{color: '#93c5fd'}}>
+                  ${formatMoney(calculations.sums.netMarginBeforeTaxesUsd || 0)}
+                  <span style={{fontSize: '0.85rem', marginLeft: '0.5rem', opacity: 0.85}}>({pctOfOrder(calculations.sums.netMarginBeforeTaxesUsd || 0)}% від замовлення)</span>
+                </div>
               </div>
             </div>
 
@@ -3711,21 +3818,21 @@ function App() {
               <label>Знижка клієнту (%)</label>
               <input type="number" value={clientDiscountPercent} onChange={(e) => setClientDiscountPercent(parseNumberInput(e.target.value))} />
             </div>
-            <div className="input-group" style={{marginBottom: '1rem'}}>
+            {!clientMode && <div className="input-group" style={{marginBottom: '1rem'}}>
               <label>Податковий режим</label>
               <select value={taxMode} onChange={(e) => setTaxMode(e.target.value)}>
                 {Object.entries(TAX_MODES).map(([key, label]) => (
                   <option key={key} value={key}>{label}</option>
                 ))}
               </select>
-            </div>
-            {taxMode === 'fop7' && (
+            </div>}
+            {!clientMode && taxMode === 'fop7' && (
               <div className="input-group" style={{marginBottom: '1rem'}}>
                 <label>% податку ФОП</label>
                 <input type="number" min="0" step="0.1" value={fopTaxPercent} onChange={(e) => { setFopTaxPercent(parseNumberInput(e.target.value)); resetTaxDistributionState(); }} />
               </div>
             )}
-            {taxMode === 'fop_advanced' && (
+            {!clientMode && taxMode === 'fop_advanced' && (
               <>
                 <div className="input-group" style={{marginBottom: '0.75rem'}}>
                   <label>% податку ФОП+ (7-9)</label>
@@ -3831,7 +3938,7 @@ function App() {
                 )}
               </>
             )}
-            {taxMode !== 'none' && taxMode !== 'vat' && taxMode !== 'fop_advanced' && (
+            {!clientMode && taxMode !== 'none' && taxMode !== 'vat' && taxMode !== 'fop_advanced' && (
               <div className="input-group" style={{marginBottom: '0.75rem'}}>
                 <label>Режим розкиду податку</label>
                 <select value={taxDistributionScope} onChange={(e) => setTaxDistributionScope(e.target.value)}>
@@ -3841,7 +3948,7 @@ function App() {
                 </select>
               </div>
             )}
-            {taxMode !== 'none' && taxMode !== 'vat' && (
+            {!clientMode && taxMode !== 'none' && taxMode !== 'vat' && (
               <div className="flex items-center" style={{gap: '0.5rem', marginBottom: '0.75rem'}}>
                 <button type="button" className="secondary" style={{background: '#0f766e'}} onClick={distributeTaxToGoods}>
                   Розкинути податок
@@ -3851,7 +3958,7 @@ function App() {
                 </button>
               </div>
             )}
-            {taxMode !== 'none' && (
+            {!clientMode && taxMode !== 'none' && (
               <div style={{fontSize: '0.9rem', color: 'var(--text-muted)', marginBottom: '0.6rem'}}>
                 Податки: <strong style={{color: 'var(--accent-yellow)'}}>${formatMoney(calculations.sums.taxesUsd || 0)}</strong>
                 {taxMode !== 'vat' && <span style={{marginLeft: '0.75rem'}}>
@@ -3884,12 +3991,12 @@ function App() {
               </div>
             </div>
 
-            <div className="summary-card internal-only" style={{marginTop: '1rem', border: '1px solid rgba(56, 189, 248, 0.35)'}}>
+            {!clientMode && <div className="summary-card internal-only" style={{marginTop: '1rem', border: '1px solid rgba(56, 189, 248, 0.35)'}}>
               <div className="summary-item highlight">
                 <h3>Податки та чистий прибуток</h3>
                 <div style={{display: 'grid', gap: '0.45rem', marginTop: '0.75rem'}}>
                   <div className="flex justify-between"><span>Режим податків:</span><strong>{TAX_MODES[taxMode] || TAX_MODES.none}</strong></div>
-                  <div className="flex justify-between"><span>Податки:</span><strong style={{color: 'var(--accent-yellow)'}}>${formatMoney(calculations.sums.taxesUsd || 0)} <span style={{opacity: 0.85}}>(₴{formatMoney(calculations.sums.taxesUah || 0)})</span></strong></div>
+                  <div className="flex justify-between"><span>Податки:</span><strong style={{color: 'var(--accent-yellow)'}}>${formatMoney(calculations.sums.taxesUsd || 0)} <span style={{opacity: 0.85}}>(₴{formatMoney(calculations.sums.taxesUah || 0)})</span><span style={{fontSize: '0.85rem', marginLeft: '0.5rem', opacity: 0.85}}>({pctOfOrder(calculations.sums.taxesUsd || 0)}%)</span></strong></div>
                   {taxMode === 'vat' && (
                     <>
                       <div className="flex justify-between"><span>ПДВ товари 20%:</span><strong>${formatMoney(calculations.sums.vatGoodsUsd || 0)} <span style={{opacity: 0.85}}>(₴{formatMoney(calculations.sums.vatGoodsUah || 0)})</span></strong></div>
@@ -3897,16 +4004,49 @@ function App() {
                       <div className="flex justify-between"><span>Податок на чек 2%:</span><strong>${formatMoney(calculations.sums.vatReceiptUsd || 0)} <span style={{opacity: 0.85}}>(₴{formatMoney(calculations.sums.vatReceiptUah || 0)})</span></strong></div>
                     </>
                   )}
-                  <div className="flex justify-between"><span>Маржа після податків:</span><strong>${formatMoney(calculations.sums.marginAfterTaxesUsd || 0)} <span style={{opacity: 0.85}}>(₴{formatMoney(calculations.sums.marginAfterTaxesUah || 0)})</span></strong></div>
-                  <div className="flex justify-between"><span>Комісія менеджера (після податків):</span><strong>${formatMoney(calculations.sums.managerCommissionAfterTaxesUsd || 0)} <span style={{opacity: 0.85}}>(₴{formatMoney(calculations.sums.managerCommissionAfterTaxesUah || 0)})</span></strong></div>
-                  <div className="flex justify-between" style={{paddingTop: '0.35rem', borderTop: '1px dashed rgba(148,163,184,0.35)'}}><span>Чистий прибуток:</span><strong style={{color: 'var(--accent-green)'}}>${formatMoney(calculations.sums.netMarginUsd || 0)} <span style={{opacity: 0.85}}>(₴{formatMoney(calculations.sums.netMarginUah || 0)})</span></strong></div>
+                  <div className="flex justify-between"><span>Маржа після податків:</span><strong>${formatMoney(calculations.sums.marginAfterTaxesUsd || 0)} <span style={{opacity: 0.85}}>(₴{formatMoney(calculations.sums.marginAfterTaxesUah || 0)})</span><span style={{fontSize: '0.85rem', marginLeft: '0.5rem', opacity: 0.85}}>({pctOfOrder(calculations.sums.marginAfterTaxesUsd || 0)}%)</span></strong></div>
+                  <div className="flex justify-between"><span>Комісія менеджера (після податків):</span><strong>${formatMoney(calculations.sums.managerCommissionAfterTaxesUsd || 0)} <span style={{opacity: 0.85}}>(₴{formatMoney(calculations.sums.managerCommissionAfterTaxesUah || 0)})</span><span style={{fontSize: '0.85rem', marginLeft: '0.5rem', opacity: 0.85}}>({pctOfOrder(calculations.sums.managerCommissionAfterTaxesUsd || 0)}%)</span></strong></div>
+                  <div className="flex justify-between" style={{paddingTop: '0.35rem', borderTop: '1px dashed rgba(148,163,184,0.35)'}}><span>Чистий прибуток:</span><strong style={{color: 'var(--accent-green)'}}>${formatMoney(calculations.sums.netMarginUsd || 0)} <span style={{opacity: 0.85}}>(₴{formatMoney(calculations.sums.netMarginUah || 0)})</span><span style={{fontSize: '0.85rem', marginLeft: '0.5rem', opacity: 0.85}}>({pctOfOrder(calculations.sums.netMarginUsd || 0)}%)</span></strong></div>
                 </div>
               </div>
-            </div>
+            </div>}
           </div>
         </div>
       </div>
       </div>
+
+      <button
+        type="button"
+        className="quick-calc-fab no-print"
+        onClick={() => setShowQuickCalc((v) => !v)}
+        title={showQuickCalc ? 'Закрити калькулятор' : 'Відкрити калькулятор'}
+      >
+        🧮 Калькулятор
+      </button>
+
+      {showQuickCalc && (
+        <div className="quick-calc-panel no-print">
+          <div className="quick-calc-header">Базовий калькулятор</div>
+          <input
+            type="text"
+            className="quick-calc-input"
+            value={quickCalcExpr}
+            onChange={(e) => {
+              setQuickCalcExpr(e.target.value);
+              setQuickCalcResult(safeEvalQuickCalc(e.target.value));
+            }}
+            placeholder="Наприклад: (1200+350)*1.2"
+          />
+          <div className="quick-calc-result">= {quickCalcResult}</div>
+          <div className="quick-calc-grid">
+            {['7','8','9','/','4','5','6','*','1','2','3','-','0','.','(',')','+'].map((t) => (
+              <button key={t} type="button" className="secondary" onClick={() => quickCalcAppend(t)}>{t}</button>
+            ))}
+            <button type="button" className="danger" onClick={quickCalcClearAll}>C</button>
+            <button type="button" className="secondary" style={{gridColumn: 'span 3'}} onClick={quickCalcClearAll}>Стерти все</button>
+          </div>
+        </div>
+      )}
 
       {showNewProjectDialog && (
         <div className="project-modal-overlay">
@@ -3938,7 +4078,7 @@ function App() {
               <div className="offer-cover-page" style={{backgroundImage: "url(./title1.jpg)"}}>
                 <button className="secondary no-print offer-cover-close" onClick={() => setPrintMode(null)}>Закрити</button>
                 <div className="offer-cover-content">
-                  <div className="offer-cover-top">КОМЕРЦІЙНА ПРОПОЗИЦІЯ · {currentYear}</div>
+                  <div className="offer-cover-top">КОМЕРЦІЙНА ПРОПОЗИЦІЯ · {coverPageType} · {currentYear}</div>
                   <h1 className="offer-cover-title">{coverMainTitle}</h1>
                   <div className="offer-cover-subtitle">{coverSubtitle}</div>
                   <div className="offer-cover-address">📍 {coverAddress}</div>

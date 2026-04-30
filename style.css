@@ -3276,3 +3276,52 @@ button.secondary:hover {
   padding-left: 0.5rem;
   border-left: 1px dashed rgba(140, 178, 232, 0.35);
 }
+
+.quick-calc-fab {
+  position: fixed;
+  right: 16px;
+  bottom: 16px;
+  z-index: 1200;
+  border-radius: 999px !important;
+  padding: 0.7rem 1rem !important;
+  background: linear-gradient(135deg, #0f766e, #0e9f6e) !important;
+  color: #fff !important;
+  font-weight: 700;
+  border: 1px solid rgba(255,255,255,0.25);
+}
+
+.quick-calc-panel {
+  position: fixed;
+  right: 16px;
+  bottom: 72px;
+  z-index: 1200;
+  width: 320px;
+  background: #102f5f;
+  border: 1px solid var(--border-color);
+  border-radius: 12px;
+  padding: 0.8rem;
+  box-shadow: 0 16px 30px rgba(0,0,0,0.35);
+}
+
+.quick-calc-header {
+  font-weight: 800;
+  margin-bottom: 0.55rem;
+}
+
+.quick-calc-input {
+  width: 100%;
+  margin-bottom: 0.45rem;
+}
+
+.quick-calc-result {
+  font-size: 1.1rem;
+  font-weight: 800;
+  color: #86efac;
+  margin-bottom: 0.55rem;
+}
+
+.quick-calc-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 0.35rem;
+}

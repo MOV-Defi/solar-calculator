@@ -84,7 +84,7 @@ const styleDataRow = (row, isOffer, rowColor = 'FFFFFFFF') => {
       if (i === 8) cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFFFF0B3' } };
       if (i === 9) cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFFFE8B0' } };
       if (i === 10) cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFE6FFED' } };
-      if (i === 11 || i === 12) cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFD9F2FF' } };
+      if (i === 11 || i === 12 || i === 13) cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFD9F2FF' } };
     }
 
     cell.numFmt = '#,##0.00';
@@ -113,6 +113,8 @@ const writeRow = ({ sheet, rowNumber, isOffer, name, unit, qty, priceUsd, totalU
     row.getCell(10).value = { formula: `C${r}*H${r}`, result: toNumber(totalCostUsd, 0) || (toNumber(qty, 0) * toNumber(incomingUsd, 0)) };
     row.getCell(11).value = { formula: `F${r}-J${r}`, result: toNumber(totalMarginUsd, 0) || ((toNumber(totalUsd, 0) || (toNumber(qty, 0) * toNumber(priceUsd, 0))) - (toNumber(totalCostUsd, 0) || (toNumber(qty, 0) * toNumber(incomingUsd, 0)))) };
     row.getCell(12).value = { formula: `K${r}*B$4`, result: (toNumber(totalMarginUsd, 0) || ((toNumber(totalUsd, 0) || (toNumber(qty, 0) * toNumber(priceUsd, 0))) - (toNumber(totalCostUsd, 0) || (toNumber(qty, 0) * toNumber(incomingUsd, 0))))) * (sheet.getCell('B4').value || 1) };
+    row.getCell(13).value = { formula: `IF(F${r}>0,K${r}/F${r}*100,0)` };
+    row.getCell(13).numFmt = '0.0';
   }
 
   styleDataRow(row, isOffer, rowColor);
@@ -413,7 +415,44 @@ async function exportToExcelFile({
       };
     }
 
-    const signRow = totalRowIdx + 3;
+    let summaryRow = totalRowIdx + 2;
+    const addInvoiceSummaryLine = (label, usd, uah, highlight = false) => {
+      const row = sheet.getRow(summaryRow++);
+      sheet.mergeCells(`A${row.number}:F${row.number}`);
+      row.getCell(1).value = label;
+      row.getCell(7).value = toNumber(usd, 0);
+      row.getCell(8).value = toNumber(uah, 0);
+      row.getCell(7).numFmt = '#,##0.00';
+      row.getCell(8).numFmt = '#,##0.00';
+      for (let c = 1; c <= 8; c += 1) {
+        const cell = row.getCell(c);
+        cell.border = {
+          left: { style: 'thin', color: { argb: 'FFBFC7D5' } },
+          right: { style: 'thin', color: { argb: 'FFBFC7D5' } },
+          top: { style: 'thin', color: { argb: 'FFBFC7D5' } },
+          bottom: { style: 'thin', color: { argb: 'FFBFC7D5' } }
+        };
+        cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: highlight ? 'FFE9F4DA' : 'FFFFFFFF' } };
+      }
+      row.getCell(1).font = { name: 'Arial', size: 10, bold: true, color: { argb: 'FF153772' } };
+      row.getCell(7).font = { name: 'Arial', size: 10, bold: true };
+      row.getCell(8).font = { name: 'Arial', size: 10, bold: true };
+    };
+
+    addInvoiceSummaryLine('Загальна маржа (до податків):', calculations?.sums?.grossMarginBeforeTaxesUsd, toNumber(calculations?.sums?.grossMarginBeforeTaxesUsd, 0) * toNumber(rates?.usd, 1), true);
+    addInvoiceSummaryLine(`Комісія менеджера до податків (${toNumber(managerCommissionRate, 0)}%):`, calculations?.sums?.managerCommissionBeforeTaxesUsd, toNumber(calculations?.sums?.managerCommissionBeforeTaxesUsd, 0) * toNumber(rates?.usd, 1));
+    addInvoiceSummaryLine('Чиста маржа до податків:', calculations?.sums?.netMarginBeforeTaxesUsd, toNumber(calculations?.sums?.netMarginBeforeTaxesUsd, 0) * toNumber(rates?.usd, 1), true);
+    addInvoiceSummaryLine('Разом податки:', calculations?.sums?.taxesUsd, calculations?.sums?.taxesUah);
+    if ((calculations?.taxMode || 'none') === 'vat') {
+      addInvoiceSummaryLine('ПДВ товари 20%:', calculations?.sums?.vatGoodsUsd, calculations?.sums?.vatGoodsUah);
+      addInvoiceSummaryLine('ПДВ роботи 20%:', calculations?.sums?.vatWorksUsd, calculations?.sums?.vatWorksUah);
+      addInvoiceSummaryLine('Податок на чек 2%:', calculations?.sums?.vatReceiptUsd, calculations?.sums?.vatReceiptUah);
+    }
+    addInvoiceSummaryLine('Маржа після податків:', calculations?.sums?.marginAfterTaxesUsd, calculations?.sums?.marginAfterTaxesUah, true);
+    addInvoiceSummaryLine('Комісія менеджера після податків:', calculations?.sums?.managerCommissionAfterTaxesUsd, calculations?.sums?.managerCommissionAfterTaxesUah);
+    addInvoiceSummaryLine('Чистий прибуток:', calculations?.sums?.netMarginUsd, calculations?.sums?.netMarginUah, true);
+
+    const signRow = summaryRow + 1;
     sheet.getCell(`A${signRow}`).value = 'Менеджер:';
     sheet.getCell(`E${signRow}`).value = 'Замовник:';
     sheet.getCell(`A${signRow}`).font = { name: 'Arial', size: 10, bold: true, color: { argb: 'FF153772' } };
@@ -472,13 +511,14 @@ async function exportToExcelFile({
     'Сума, $',
     'Сума, грн'
   ];
-  const internalHeaders = ['Вхідна ціна, $', 'Націнка, %', 'Собівартість, $', 'Маржа, $', 'Маржа, грн'];
+  const internalHeaders = ['Вхідна ціна, $', 'Націнка, %', 'Собівартість, $', 'Маржа, $', 'Маржа, грн', 'Маржа, %'];
   const outHeaders = isOffer ? [...baseHeaders, ...internalHeaders] : baseHeaders;
+  const taxMode = calculations?.taxMode || 'none';
 
   addHeader(sheet, outHeaders, headerRowIdx);
 
   sheet.getColumn(1).width = 45;
-  for (let i = 2; i <= headers.length; i += 1) sheet.getColumn(i).width = 13;
+  for (let i = 2; i <= outHeaders.length; i += 1) sheet.getColumn(i).width = 13;
 
   let currentRow = headerRowIdx + 1;
   let stripeIdx = 0;
@@ -536,11 +576,11 @@ async function exportToExcelFile({
     return true;
   };
 
-  const isExpandableByType = (groupKey) => {
-    if (!groupKey || groupKey === 'Основне обладнання') return false;
-    const normalized = String(groupKey).toLowerCase().replace(/\s+/g, ' ').trim();
-    return normalized.startsWith('захист') || normalized.startsWith('кріплення');
-  };
+const isExpandableByType = (groupKey) => {
+  if (!groupKey || groupKey === 'Основне обладнання') return false;
+  const normalized = String(groupKey).toLowerCase().replace(/\s+/g, ' ').trim();
+  return normalized.startsWith('захист');
+};
 
   orderedGroupKeys.forEach((groupKey) => {
     const items = Array.isArray(calculations.groups[groupKey]) ? calculations.groups[groupKey] : [];
@@ -611,7 +651,7 @@ async function exportToExcelFile({
     const priceUsd = qty > 0 ? (totalUsd / qty) : totalUsd;
     const incomingUsd = qty > 0 ? (totalCostUsd / qty) : totalCostUsd;
 
-    const effectiveMarkup = (settings.mode === 'detailed' || groupKey.startsWith('Захист') || groupKey.startsWith('Кріплення'))
+    const effectiveMarkup = (settings.mode === 'detailed' || groupKey.startsWith('Захист'))
       ? (totalCostUsd > 0 ? ((totalUsd - totalCostUsd) / totalCostUsd) * 100 : toNumber(settings.markupPercent, 0))
       : toNumber(settings.markupPercent, 0);
 
@@ -670,7 +710,7 @@ async function exportToExcelFile({
     c.numFmt = '#,##0.00';
     c.alignment = { vertical: 'middle' };
   });
-  for (let i = 1; i <= headers.length; i += 1) {
+  for (let i = 1; i <= outHeaders.length; i += 1) {
     const c = matRow.getCell(i);
     if (!matCols.includes(i)) {
       c.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFE9F4DA' } };
@@ -681,7 +721,7 @@ async function exportToExcelFile({
   const paintSummaryLine = (row, label, fill = 'FFE9F4DA') => {
     row.getCell(1).value = label;
     const sumCols = isOffer ? [6, 7, 9, 10, 11] : [6, 7];
-    for (let i = 1; i <= headers.length; i += 1) {
+    for (let i = 1; i <= outHeaders.length; i += 1) {
       const c = row.getCell(i);
       c.fill = {
         type: 'pattern',
@@ -689,7 +729,7 @@ async function exportToExcelFile({
         fgColor: { argb: sumCols.includes(i) ? 'FF92D050' : fill }
       };
       c.border = { top: { style: 'medium' }, left: { style: 'thin' }, bottom: { style: 'medium' }, right: { style: 'thin' } };
-      c.font = { size: 10, bold: i === 1 || i === 6 || i === 7 || (isOffer && (i === 10 || i === 11 || i === 12)) };
+      c.font = { size: 10, bold: i === 1 || i === 6 || i === 7 || (isOffer && (i === 10 || i === 11 || i === 12 || i === 13)) };
       if (i >= 6) c.numFmt = '#,##0.00';
       c.alignment = { vertical: 'middle', horizontal: i === 1 ? 'left' : 'right' };
     }
@@ -710,7 +750,7 @@ async function exportToExcelFile({
   const addSectionHeader = (title) => {
     const row = sheet.getRow(currentRow++);
     row.getCell(1).value = title;
-    for (let i = 1; i <= headers.length; i += 1) {
+    for (let i = 1; i <= outHeaders.length; i += 1) {
       const c = row.getCell(i);
       c.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFE9EEF8' } };
       c.font = { bold: true, size: 10, color: { argb: 'FF1F3A68' } };
@@ -855,45 +895,256 @@ async function exportToExcelFile({
       c.border = { top: { style: 'medium' }, bottom: { style: 'medium' } };
     }
   });
-  for (let i = 1; i <= headers.length; i += 1) {
+  for (let i = 1; i <= outHeaders.length; i += 1) {
     const c = finalRow.getCell(i);
-    if (i !== 1 && i !== 6 && i !== 7 && !(isOffer && (i === 9 || i === 10 || i === 11))) {
+    if (i !== 1 && i !== 6 && i !== 7 && !(isOffer && (i === 9 || i === 10 || i === 11 || i === 12 || i === 13))) {
       c.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFFFF7A8' } };
     }
     c.border = { top: { style: 'medium' }, left: { style: 'thin' }, bottom: { style: 'medium' }, right: { style: 'thin' } };
   }
 
   if (isOffer) {
-    finalRow.getCell(10).value = { formula: `J${summaryStartRow}+J${logRow.number}+J${insRow.number}` };
-    finalRow.getCell(11).value = { formula: `K${summaryStartRow}+K${logRow.number}+K${insRow.number}` };
-    finalRow.getCell(12).value = { formula: `L${summaryStartRow}+L${logRow.number}+L${insRow.number}` };
-    [10, 11, 12].forEach((i) => {
+    if (insRow) {
+      finalRow.getCell(10).value = { formula: `J${summaryStartRow}+J${logRow.number}+J${insRow.number}` };
+      finalRow.getCell(11).value = { formula: `K${summaryStartRow}+K${logRow.number}+K${insRow.number}` };
+      finalRow.getCell(12).value = { formula: `L${summaryStartRow}+L${logRow.number}+L${insRow.number}` };
+    } else {
+      finalRow.getCell(10).value = { formula: `J${summaryStartRow}+J${logRow.number}` };
+      finalRow.getCell(11).value = { formula: `K${summaryStartRow}+K${logRow.number}` };
+      finalRow.getCell(12).value = { formula: `L${summaryStartRow}+L${logRow.number}` };
+    }
+    finalRow.getCell(13).value = { formula: `IF(F${finalRow.number}>0,K${finalRow.number}/F${finalRow.number}*100,0)` };
+    finalRow.getCell(13).numFmt = '0.0';
+    [10, 11, 12, 13].forEach((i) => {
       const c = finalRow.getCell(i);
       c.font = { bold: true, size: 14 };
       c.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFFFFF00' } };
-      c.numFmt = '#,##0.00';
+      if (i !== 13) c.numFmt = '#,##0.00';
       c.alignment = { vertical: 'middle' };
       c.border = { top: { style: 'medium' }, bottom: { style: 'medium' } };
     });
 
-    currentRow += 2;
-    sheet.getRow(currentRow).getCell(1).value = 'Розрахунок маржі:';
-    sheet.getRow(currentRow).getCell(11).value = { formula: `K${finalRow.number}` };
-    sheet.getRow(currentRow).getCell(11).font = { bold: true };
-    sheet.getRow(currentRow).getCell(11).numFmt = '#,##0.00';
+    const discountPercent = toNumber(calculations?.sums?.discountPercent, 0);
+    if (discountPercent > 0) {
+      const withoutDiscountRow = sheet.getRow(currentRow++);
+      withoutDiscountRow.getCell(1).value = 'РАЗОМ ДО СПЛАТИ (без знижки):';
+      withoutDiscountRow.getCell(6).value = toNumber(calculations?.sums?.finalTotalUsd, 0);
+      withoutDiscountRow.getCell(7).value = toNumber(calculations?.sums?.finalTotalUah, 0);
+      withoutDiscountRow.getCell(10).value = toNumber(calculations?.sums?.orderCostUsd, 0);
+      withoutDiscountRow.getCell(11).value = toNumber(calculations?.sums?.finalTotalUsd, 0) - toNumber(calculations?.sums?.orderCostUsd, 0);
+      withoutDiscountRow.getCell(12).value = (toNumber(calculations?.sums?.finalTotalUsd, 0) - toNumber(calculations?.sums?.orderCostUsd, 0)) * toNumber(rates?.usd, 1);
+      withoutDiscountRow.getCell(13).value = { formula: `IF(F${withoutDiscountRow.number}>0,K${withoutDiscountRow.number}/F${withoutDiscountRow.number}*100,0)` };
+      withoutDiscountRow.getCell(13).numFmt = '0.0';
+      for (let i = 1; i <= outHeaders.length; i += 1) {
+        const c = withoutDiscountRow.getCell(i);
+        c.border = { top: { style: 'medium' }, left: { style: 'thin' }, bottom: { style: 'medium' }, right: { style: 'thin' } };
+        c.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: (i === 1 || i === 6 || i === 7 || i === 10 || i === 11 || i === 12 || i === 13) ? 'FFE8F0FF' : 'FFFFFFFF' } };
+        c.font = { bold: true, size: 12 };
+        if (i !== 13 && i >= 6) c.numFmt = '#,##0.00';
+      }
 
-    currentRow += 1;
-    sheet.getRow(currentRow).getCell(1).value = `Комісія менеджера (${managerCommissionRate}%):`;
-    sheet.getRow(currentRow).getCell(11).value = { formula: `K${currentRow - 1}*${managerCommissionRate / 100}` };
-    sheet.getRow(currentRow).getCell(11).numFmt = '#,##0.00';
+      const discountRow = sheet.getRow(currentRow++);
+      discountRow.getCell(1).value = `Знижка клієнту (${discountPercent}%):`;
+      discountRow.getCell(6).value = toNumber(calculations?.sums?.discountUsd, 0);
+      discountRow.getCell(7).value = toNumber(calculations?.sums?.discountUsd, 0) * toNumber(rates?.usd, 1);
+      for (let i = 1; i <= outHeaders.length; i += 1) {
+        const c = discountRow.getCell(i);
+        c.border = { top: { style: 'thin' }, left: { style: 'thin' }, bottom: { style: 'thin' }, right: { style: 'thin' } };
+        c.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: i >= 6 && i <= 7 ? 'FFFFE8B0' : 'FFFFFFFF' } };
+      }
 
-    currentRow += 1;
-    const netRow = sheet.getRow(currentRow);
-    netRow.getCell(1).value = 'ЧИСТИЙ ПРИБУТОК:';
-    netRow.getCell(11).value = { formula: `K${currentRow - 2}-K${currentRow - 1}` };
-    netRow.getCell(11).font = { bold: true };
-    netRow.getCell(11).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF92D050' } };
-    netRow.getCell(11).numFmt = '#,##0.00';
+      const withDiscountRow = sheet.getRow(currentRow++);
+      withDiscountRow.getCell(1).value = 'РАЗОМ ДО СПЛАТИ (зі знижкою):';
+      withDiscountRow.getCell(6).value = toNumber(calculations?.sums?.finalTotalWithDiscountUsd, 0);
+      withDiscountRow.getCell(7).value = toNumber(calculations?.sums?.finalTotalWithDiscountUah, 0);
+      withDiscountRow.getCell(10).value = toNumber(calculations?.sums?.orderCostUsd, 0);
+      withDiscountRow.getCell(11).value = toNumber(calculations?.sums?.finalTotalWithDiscountUsd, 0) - toNumber(calculations?.sums?.orderCostUsd, 0);
+      withDiscountRow.getCell(12).value = (toNumber(calculations?.sums?.finalTotalWithDiscountUsd, 0) - toNumber(calculations?.sums?.orderCostUsd, 0)) * toNumber(rates?.usd, 1);
+      withDiscountRow.getCell(13).value = { formula: `IF(F${withDiscountRow.number}>0,K${withDiscountRow.number}/F${withDiscountRow.number}*100,0)` };
+      withDiscountRow.getCell(13).numFmt = '0.0';
+      for (let i = 1; i <= outHeaders.length; i += 1) {
+        const c = withDiscountRow.getCell(i);
+        c.border = { top: { style: 'medium' }, left: { style: 'thin' }, bottom: { style: 'medium' }, right: { style: 'thin' } };
+        c.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: (i === 1 || i === 6 || i === 7 || i === 10 || i === 11 || i === 12 || i === 13) ? 'FFFFFF00' : 'FFFFF7A8' } };
+        c.font = { bold: true, size: 12 };
+        if (i !== 13 && i >= 6) c.numFmt = '#,##0.00';
+      }
+    }
+
+    if (!isFullSpec) {
+      currentRow += 2;
+      sheet.getRow(currentRow).getCell(1).value = 'Загальна маржа (до податків):';
+      sheet.getRow(currentRow).getCell(11).value = { formula: `K${finalRow.number}` };
+      sheet.getRow(currentRow).getCell(11).font = { bold: true };
+      sheet.getRow(currentRow).getCell(11).numFmt = '#,##0.00';
+
+      currentRow += 1;
+      sheet.getRow(currentRow).getCell(1).value = `Комісія менеджера до податків (${managerCommissionRate}%):`;
+      sheet.getRow(currentRow).getCell(11).value = { formula: `K${currentRow - 1}*${managerCommissionRate / 100}` };
+      sheet.getRow(currentRow).getCell(11).numFmt = '#,##0.00';
+
+      currentRow += 1;
+      sheet.getRow(currentRow).getCell(1).value = 'Чиста маржа до податків:';
+      sheet.getRow(currentRow).getCell(11).value = { formula: `K${currentRow - 2}-K${currentRow - 1}` };
+      sheet.getRow(currentRow).getCell(11).font = { bold: true };
+      sheet.getRow(currentRow).getCell(11).numFmt = '#,##0.00';
+
+      // Податки у зведеній версії (обов'язково для всіх режимів)
+      currentRow += 1;
+      sheet.getRow(currentRow).getCell(1).value = 'Разом податки:';
+      sheet.getRow(currentRow).getCell(11).value = toNumber(calculations?.sums?.taxesUsd, 0);
+      sheet.getRow(currentRow).getCell(12).value = toNumber(calculations?.sums?.taxesUah, 0);
+      sheet.getRow(currentRow).getCell(11).numFmt = '#,##0.00';
+      sheet.getRow(currentRow).getCell(12).numFmt = '#,##0.00';
+      sheet.getRow(currentRow).getCell(11).font = { bold: true };
+      sheet.getRow(currentRow).getCell(12).font = { bold: true };
+
+      // Деталізація ПДВ у зведеній версії
+      if (taxMode === 'vat') {
+        currentRow += 1;
+        sheet.getRow(currentRow).getCell(1).value = 'ПДВ товари 20%:';
+        sheet.getRow(currentRow).getCell(11).value = toNumber(calculations?.sums?.vatGoodsUsd, 0);
+        sheet.getRow(currentRow).getCell(12).value = toNumber(calculations?.sums?.vatGoodsUah, 0);
+        sheet.getRow(currentRow).getCell(11).numFmt = '#,##0.00';
+        sheet.getRow(currentRow).getCell(12).numFmt = '#,##0.00';
+
+        currentRow += 1;
+        sheet.getRow(currentRow).getCell(1).value = 'ПДВ роботи 20%:';
+        sheet.getRow(currentRow).getCell(11).value = toNumber(calculations?.sums?.vatWorksUsd, 0);
+        sheet.getRow(currentRow).getCell(12).value = toNumber(calculations?.sums?.vatWorksUah, 0);
+        sheet.getRow(currentRow).getCell(11).numFmt = '#,##0.00';
+        sheet.getRow(currentRow).getCell(12).numFmt = '#,##0.00';
+
+        currentRow += 1;
+        sheet.getRow(currentRow).getCell(1).value = 'Податок на чек 2%:';
+        sheet.getRow(currentRow).getCell(11).value = toNumber(calculations?.sums?.vatReceiptUsd, 0);
+        sheet.getRow(currentRow).getCell(12).value = toNumber(calculations?.sums?.vatReceiptUah, 0);
+        sheet.getRow(currentRow).getCell(11).numFmt = '#,##0.00';
+        sheet.getRow(currentRow).getCell(12).numFmt = '#,##0.00';
+      }
+    }
+
+    if (isFullSpec) {
+      const orderBaseUsdForPercents = Math.max(0.000001, toNumber(calculations?.sums?.finalTotalWithDiscountUsd, 0));
+      const addPctLabel = (label, usdValue) => `${label} (${((toNumber(usdValue, 0) / orderBaseUsdForPercents) * 100).toFixed(1)}% від замовлення)`;
+      currentRow += 2;
+      const financeHeaderRow = sheet.getRow(currentRow++);
+      financeHeaderRow.getCell(1).value = 'Маржинальність та прибутковість';
+      for (let i = 1; i <= outHeaders.length; i += 1) {
+        const c = financeHeaderRow.getCell(i);
+        c.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFE9EEF8' } };
+        c.font = { bold: true, size: 10, color: { argb: 'FF1F3A68' } };
+        c.border = { top: { style: 'thin' }, left: { style: 'thin' }, bottom: { style: 'thin' }, right: { style: 'thin' } };
+      }
+
+      const writeFinanceLine = (label, usdValue, uahValue) => {
+        const row = sheet.getRow(currentRow++);
+        row.getCell(1).value = label;
+        row.getCell(11).value = toNumber(usdValue, 0);
+        row.getCell(12).value = toNumber(uahValue, 0);
+        for (let i = 1; i <= outHeaders.length; i += 1) {
+          const c = row.getCell(i);
+          c.border = { top: { style: 'thin' }, left: { style: 'thin' }, bottom: { style: 'thin' }, right: { style: 'thin' } };
+          c.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFFFFFFF' } };
+          if (i === 11 || i === 12) {
+            c.numFmt = '#,##0.00';
+            c.alignment = { horizontal: 'right', vertical: 'middle' };
+          }
+        }
+      };
+
+      writeFinanceLine(addPctLabel('Маржа з товару', calculations?.sums?.marginMaterialsUsd), calculations?.sums?.marginMaterialsUsd, toNumber(calculations?.sums?.marginMaterialsUsd, 0) * toNumber(rates?.usd, 1));
+      writeFinanceLine(addPctLabel('Маржа з робіт', calculations?.sums?.marginWorksUsd), calculations?.sums?.marginWorksUsd, toNumber(calculations?.sums?.marginWorksUsd, 0) * toNumber(rates?.usd, 1));
+      writeFinanceLine(addPctLabel('Загальна маржа (до податків)', calculations?.sums?.grossMarginBeforeTaxesUsd), calculations?.sums?.grossMarginBeforeTaxesUsd, toNumber(calculations?.sums?.grossMarginBeforeTaxesUsd, 0) * toNumber(rates?.usd, 1));
+      writeFinanceLine(addPctLabel(`Комісія менеджера до податків (${managerCommissionRate}%)`, calculations?.sums?.managerCommissionBeforeTaxesUsd), calculations?.sums?.managerCommissionBeforeTaxesUsd, toNumber(calculations?.sums?.managerCommissionBeforeTaxesUsd, 0) * toNumber(rates?.usd, 1));
+      writeFinanceLine(addPctLabel('Чиста маржа до податків', calculations?.sums?.netMarginBeforeTaxesUsd), calculations?.sums?.netMarginBeforeTaxesUsd, toNumber(calculations?.sums?.netMarginBeforeTaxesUsd, 0) * toNumber(rates?.usd, 1));
+
+      currentRow += 1;
+      const taxHeaderRow = sheet.getRow(currentRow++);
+      taxHeaderRow.getCell(1).value = 'Податки';
+      for (let i = 1; i <= outHeaders.length; i += 1) {
+        const c = taxHeaderRow.getCell(i);
+        c.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFE9EEF8' } };
+        c.font = { bold: true, size: 10, color: { argb: 'FF1F3A68' } };
+        c.border = { top: { style: 'thin' }, left: { style: 'thin' }, bottom: { style: 'thin' }, right: { style: 'thin' } };
+      }
+
+      const writeTaxLine = (label, usdValue, uahValue) => {
+        const row = sheet.getRow(currentRow++);
+        row.getCell(1).value = label;
+        row.getCell(11).value = toNumber(usdValue, 0);
+        row.getCell(12).value = toNumber(uahValue, 0);
+        for (let i = 1; i <= outHeaders.length; i += 1) {
+          const c = row.getCell(i);
+          c.border = { top: { style: 'thin' }, left: { style: 'thin' }, bottom: { style: 'thin' }, right: { style: 'thin' } };
+          c.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFFFFFFF' } };
+          if (i === 11 || i === 12) {
+            c.numFmt = '#,##0.00';
+            c.alignment = { horizontal: 'right', vertical: 'middle' };
+          }
+        }
+      };
+
+      const vatGoodsUsd = toNumber(calculations?.sums?.vatGoodsUsd, 0);
+      const vatWorksUsd = toNumber(calculations?.sums?.vatWorksUsd, 0);
+      const vatReceiptUsd = toNumber(calculations?.sums?.vatReceiptUsd, 0);
+      const taxesUsd = toNumber(calculations?.sums?.taxesUsd, 0);
+      const taxesUah = toNumber(calculations?.sums?.taxesUah, 0);
+
+      if (taxMode === 'vat') {
+        writeTaxLine(addPctLabel('ПДВ товари 20%', vatGoodsUsd), vatGoodsUsd, vatGoodsUsd * toNumber(rates?.usd, 1));
+        writeTaxLine(addPctLabel('ПДВ роботи 20%', vatWorksUsd), vatWorksUsd, vatWorksUsd * toNumber(rates?.usd, 1));
+        writeTaxLine(addPctLabel('Податок на чек 2%', vatReceiptUsd), vatReceiptUsd, vatReceiptUsd * toNumber(rates?.usd, 1));
+      }
+
+      if (taxMode === 'fop7' || taxMode === 'fop_advanced') {
+        writeTaxLine(addPctLabel('Податок ФОП', taxesUsd), taxesUsd, taxesUah);
+      }
+
+      const taxTotalRow = sheet.getRow(currentRow++);
+      taxTotalRow.getCell(1).value = 'Разом податки:';
+      taxTotalRow.getCell(11).value = taxesUsd;
+      taxTotalRow.getCell(12).value = taxesUah;
+      for (let i = 1; i <= outHeaders.length; i += 1) {
+        const c = taxTotalRow.getCell(i);
+        c.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: i >= 11 ? 'FF92D050' : 'FFE9F4DA' } };
+        c.font = { bold: true };
+        c.border = { top: { style: 'medium' }, left: { style: 'thin' }, bottom: { style: 'medium' }, right: { style: 'thin' } };
+        if (i >= 11) c.numFmt = '#,##0.00';
+      }
+
+      currentRow += 1;
+      const finalFinanceHeader = sheet.getRow(currentRow++);
+      finalFinanceHeader.getCell(1).value = 'Підсумок після податків';
+      for (let i = 1; i <= outHeaders.length; i += 1) {
+        const c = finalFinanceHeader.getCell(i);
+        c.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFE9EEF8' } };
+        c.font = { bold: true, size: 10, color: { argb: 'FF1F3A68' } };
+        c.border = { top: { style: 'thin' }, left: { style: 'thin' }, bottom: { style: 'thin' }, right: { style: 'thin' } };
+      }
+
+      const afterTaxMarginRowNumber = currentRow;
+      writeTaxLine(addPctLabel('Маржа після податків', calculations?.sums?.marginAfterTaxesUsd), calculations?.sums?.marginAfterTaxesUsd, calculations?.sums?.marginAfterTaxesUah);
+      const afterTaxCommissionRowNumber = currentRow;
+      writeTaxLine(addPctLabel('Комісія менеджера після податків', calculations?.sums?.managerCommissionAfterTaxesUsd), calculations?.sums?.managerCommissionAfterTaxesUsd, calculations?.sums?.managerCommissionAfterTaxesUah);
+      const netRow = sheet.getRow(currentRow++);
+      netRow.getCell(1).value = addPctLabel('Чистий прибуток', calculations?.sums?.netMarginUsd);
+      netRow.getCell(11).value = {
+        formula: `K${afterTaxMarginRowNumber}-K${afterTaxCommissionRowNumber}`,
+        result: toNumber(calculations?.sums?.netMarginUsd, 0)
+      };
+      netRow.getCell(12).value = {
+        formula: `L${afterTaxMarginRowNumber}-L${afterTaxCommissionRowNumber}`,
+        result: toNumber(calculations?.sums?.netMarginUah, 0)
+      };
+      for (let i = 1; i <= outHeaders.length; i += 1) {
+        const c = netRow.getCell(i);
+        c.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: i >= 11 ? 'FF92D050' : 'FFE9F4DA' } };
+        c.font = { bold: true };
+        c.border = { top: { style: 'medium' }, left: { style: 'thin' }, bottom: { style: 'medium' }, right: { style: 'thin' } };
+        if (i >= 11) c.numFmt = '#,##0.00';
+      }
+    }
   } else {
     currentRow += 4;
     sheet.getCell(`A${currentRow}`).value = 'Здав: ___________________';
