@@ -68,6 +68,7 @@ h1, h2, h3 {
 .grid-cols-2 { grid-template-columns: repeat(2, 1fr); }
 .grid-cols-3 { grid-template-columns: repeat(3, 1fr); }
 .grid-cols-4 { grid-template-columns: repeat(4, 1fr); }
+.grid-cols-6 { grid-template-columns: repeat(6, 1fr); }
 
 .flex {
   display: flex;
@@ -432,6 +433,12 @@ button.danger:hover {
   display: none !important;
 }
 
+/* In client mode, work/other-cost tables should stretch full width like goods tables */
+.client-mode .aux-table-container table {
+  width: 100% !important;
+  min-width: 100% !important;
+}
+
 .print-overlay {
   position: fixed;
   top: 0;
@@ -442,6 +449,23 @@ button.danger:hover {
   z-index: 1000;
   overflow-y: auto;
   padding: 2rem;
+}
+
+.print-overlay-close {
+  position: fixed;
+  top: 12px;
+  right: 12px;
+  z-index: 1200;
+}
+
+/* Keep close button visible in offer preview even if .no-print gets hidden by capture styles */
+.print-overlay-close.no-print {
+  display: inline-flex !important;
+  align-items: center;
+  justify-content: center;
+  min-height: 38px;
+  padding: 0.5rem 0.9rem;
+  z-index: 2001;
 }
 
 .print-container {
@@ -527,6 +551,91 @@ button.danger:hover {
   line-height: 1.5;
 }
 
+.offer-print-header {
+  border: 1px solid #c8ced8;
+  padding: 0.75rem 0.9rem;
+  margin-bottom: 0.8rem;
+}
+
+.offer-summary-strip {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0.45rem;
+  margin-bottom: 0.75rem;
+}
+
+.offer-summary-item {
+  border: 1px solid #c9ced8;
+  background: #f8fafc;
+  padding: 0.5rem 0.65rem;
+}
+
+.offer-summary-label {
+  font-size: 0.72rem;
+  color: #475569;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  margin-bottom: 0.2rem;
+  font-weight: 700;
+}
+
+.offer-summary-value {
+  font-size: 1rem;
+  font-weight: 800;
+  color: #153772;
+}
+
+.offer-highlights-block {
+  border: 1px solid #c9ced8;
+  background:
+    linear-gradient(rgba(255, 255, 255, 0.88), rgba(255, 255, 255, 0.88)),
+    url('./title1.jpg') center/cover no-repeat;
+  padding: 0.6rem 0.8rem;
+  margin-bottom: 0.75rem;
+}
+
+.offer-highlights-title {
+  margin: 0 0 0.4rem 0;
+  font-size: 1rem;
+  font-weight: 800;
+  color: #102a56;
+  text-transform: uppercase;
+  letter-spacing: 0.02em;
+}
+
+.offer-highlights-block ul {
+  margin: 0;
+  padding-left: 1.1rem;
+  color: #0f172a;
+  font-weight: 700;
+}
+
+.offer-highlights-block li {
+  margin: 0.16rem 0;
+  font-size: 0.88rem;
+  line-height: 1.24;
+}
+
+.offer-top-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.55rem;
+  margin-bottom: 0.7rem;
+}
+
+.offer-top-card {
+  border: 1px solid #d5dbe6;
+  border-radius: 14px;
+  background: #f8fafc;
+  padding: 0.6rem 0.65rem;
+}
+
+.offer-top-card h3 {
+  margin: 0 0 0.35rem 0;
+  color: #102a56;
+  font-size: 1.08rem;
+}
+
 .offer-page-break {
   break-before: page;
   page-break-before: always;
@@ -541,19 +650,646 @@ button.danger:hover {
   margin: 0 auto;
 }
 
+.offer-proposal-sheet {
+  break-inside: auto;
+  page-break-inside: auto;
+}
+
+/* Візуальне розбиття на аркуші в прев'ю */
+.offer-print-container .offer-cover-page,
+.offer-print-container .offer-proposal-sheet,
+.offer-print-container .offer-station-sheet-new-page {
+  width: 210mm;
+  min-height: 297mm;
+  box-sizing: border-box;
+  background: #fff;
+}
+
+.offer-print-container .offer-proposal-sheet,
+.offer-print-container .offer-station-sheet-new-page {
+  padding: 10mm 8mm;
+  position: relative;
+  padding-bottom: 24mm;
+}
+
+/* На екрані показуємо окремими листами з відступом */
+@media screen {
+  .offer-print-container .offer-cover-page,
+  .offer-print-container .offer-proposal-sheet,
+  .offer-print-container .offer-station-sheet-new-page {
+    margin: 0 auto 10mm;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.22);
+  }
+
+  .offer-print-container .offer-page-break {
+    display: none;
+    height: 0;
+  }
+}
+
+/* Для друку/експорту залишаємо жорсткі розриви */
+@media print {
+  .offer-print-container .offer-cover-page,
+  .offer-print-container .offer-proposal-sheet,
+  .offer-print-container .offer-station-sheet-new-page {
+    margin: 0;
+    box-shadow: none;
+  }
+
+  .offer-print-container .offer-cover-page {
+    break-after: page;
+    page-break-after: always;
+  }
+
+  .offer-print-container .offer-proposal-sheet {
+    break-after: page;
+    page-break-after: always;
+  }
+}
+
+.offer-print-container .print-table {
+  width: 100%;
+  table-layout: auto;
+  font-size: 10.8px;
+}
+
+.offer-print-container .print-table th:first-child,
+.offer-print-container .print-table td:first-child {
+  width: 3%;
+}
+
+.offer-print-container .print-table th:nth-child(2),
+.offer-print-container .print-table td:nth-child(2) {
+  width: 55%;
+  min-width: 0;
+  word-break: break-word;
+  overflow-wrap: anywhere;
+  white-space: normal;
+}
+
+.offer-print-container .print-table th:nth-child(3),
+.offer-print-container .print-table td:nth-child(3) {
+  width: 4%;
+}
+
+.offer-print-container .print-table th:nth-child(4),
+.offer-print-container .print-table td:nth-child(4) {
+  width: 4%;
+}
+
+.offer-print-container .print-table th:nth-child(5),
+.offer-print-container .print-table td:nth-child(5),
+.offer-print-container .print-table th:nth-child(6),
+.offer-print-container .print-table td:nth-child(6),
+.offer-print-container .print-table th:nth-child(7),
+.offer-print-container .print-table td:nth-child(7),
+.offer-print-container .print-table th:nth-child(8),
+.offer-print-container .print-table td:nth-child(8) {
+  width: 6%;
+  white-space: nowrap;
+}
+
+.offer-print-container .print-table th,
+.offer-print-container .print-table td {
+  padding: 6px 7px;
+  line-height: 1.16;
+}
+
+.offer-print-container .print-table th {
+  font-size: 10px;
+  position: static !important;
+  top: auto !important;
+}
+
+body.pdf-capture-offer .offer-print-container {
+  width: 210mm !important;
+  max-width: 210mm !important;
+  padding: 0 !important;
+  margin: 0 auto !important;
+}
+
+body.pdf-capture-offer .print-overlay {
+  position: static !important;
+  top: auto !important;
+  left: auto !important;
+  width: auto !important;
+  height: auto !important;
+  overflow: visible !important;
+  padding: 0 !important;
+  background: transparent !important;
+}
+
+body.pdf-capture-offer .print-container {
+  width: 210mm !important;
+  max-width: 210mm !important;
+  min-height: 0 !important;
+  margin: 0 auto !important;
+  padding: 0 !important;
+  border-radius: 0 !important;
+  box-shadow: none !important;
+}
+
+body.pdf-capture-offer .offer-cover-page,
+body.pdf-capture-offer .offer-proposal-sheet,
+body.pdf-capture-offer .offer-station-sheet-new-page {
+  width: 210mm !important;
+  max-width: 210mm !important;
+  min-height: 297mm !important;
+  margin: 0 !important;
+  box-shadow: none !important;
+}
+
+body.pdf-capture-offer .offer-cover-page {
+  background: #0a2c63 !important;
+}
+
+body.pdf-capture-offer .offer-cover-page .offer-cover-image {
+  object-fit: contain !important;
+  object-position: center top !important;
+}
+
+body.pdf-capture-offer .offer-summary-strip {
+  gap: 0.3rem !important;
+  margin-bottom: 0.5rem !important;
+}
+
+body.pdf-capture-offer .offer-summary-item {
+  padding: 0.35rem 0.5rem !important;
+}
+
+body.pdf-capture-offer .offer-summary-label {
+  font-size: 0.62rem !important;
+}
+
+body.pdf-capture-offer .offer-summary-value {
+  font-size: 0.86rem !important;
+}
+
+.offer-insight-grid {
+  margin-top: 0.7rem;
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 0.8rem;
+}
+
+.offer-insight-grid.no-generation {
+  grid-template-columns: 1fr;
+}
+
+.offer-insight-grid.no-generation .offer-benefits-block h3 {
+  margin-bottom: 0.55rem;
+}
+
+.offer-gen-block,
+.offer-benefits-block {
+  border: 1px solid #c9ced8;
+  background: #fff;
+  padding: 0.55rem 0.65rem;
+}
+
+.offer-section-kicker {
+  font-size: 0.78rem;
+  font-weight: 800;
+  color: #f27f37;
+  letter-spacing: 0.05em;
+}
+
+.offer-gen-block h3,
+.offer-benefits-block h3 {
+  margin: 0.2rem 0 0.45rem;
+  color: #0f2f67;
+  font-size: 1.5rem;
+  line-height: 1.05;
+}
+
+.offer-gen-tag {
+  display: inline-block;
+  background: #f79042;
+  color: #fff;
+  font-weight: 800;
+  padding: 0.2rem 0.55rem;
+  border-radius: 8px;
+  margin-bottom: 0.45rem;
+}
+
+.offer-bars {
+  height: 210px;
+  display: grid;
+  grid-template-columns: repeat(12, minmax(0, 1fr));
+  gap: 4px;
+  align-items: end;
+  border-top: 1px solid #e5e7eb;
+  padding-top: 0.45rem;
+}
+
+.offer-bar-item {
+  text-align: center;
+}
+
+.offer-bar {
+  width: 100%;
+  background: linear-gradient(180deg, #ff9d57, #f57f35);
+  border-radius: 3px 3px 0 0;
+}
+
+.offer-bar-label {
+  font-size: 0.62rem;
+  color: #475569;
+  margin-top: 0.15rem;
+}
+
+.offer-gen-meta {
+  font-size: 0.72rem;
+  color: #64748b;
+  margin-top: 0.35rem;
+  margin-bottom: 0.25rem;
+  line-height: 1.25;
+}
+
+.offer-bars-with-axis {
+  grid-template-columns: 34px repeat(12, minmax(0, 1fr));
+  position: relative;
+}
+
+.offer-axis {
+  height: 210px;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  align-items: flex-end;
+  color: #64748b;
+  font-size: 0.62rem;
+  padding-right: 4px;
+  border-right: 1px solid #e2e8f0;
+  margin-right: 2px;
+}
+
+.offer-benefits-cards {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.5rem;
+}
+
+.offer-benefit-card {
+  border: 1px solid #d6dbe6;
+  border-radius: 12px;
+  padding: 0.6rem 0.55rem;
+  min-height: 102px;
+}
+
+.offer-benefit-title {
+  font-size: 1.02rem;
+  font-weight: 900;
+  margin-bottom: 0.25rem;
+}
+
+.offer-benefit-text {
+  font-size: 0.82rem;
+  color: #334155;
+  line-height: 1.2;
+}
+
+.offer-benefit-card.orange { border-color: #f79042; background: #fff8f2; }
+.offer-benefit-card.orange .offer-benefit-title { color: #f27f37; }
+.offer-benefit-card.blue { border-color: #1e3a8a; background: #f2f6ff; }
+.offer-benefit-card.blue .offer-benefit-title { color: #0f2f67; }
+.offer-benefit-card.green { border-top: 8px solid #1f8f45; }
+.offer-benefit-card.navy { border-top: 8px solid #0b2f73; }
+.offer-benefit-card.eco { border-top: 8px solid #2f9e44; }
+.offer-benefit-card.warranty { border-top: 8px solid #f79042; }
+
+.offer-station-sheet {
+  border: 1px solid #c9ced8;
+  padding: 0.8rem 0.9rem;
+  background: #fff;
+  break-inside: avoid;
+  page-break-inside: avoid;
+}
+
+.offer-station-sheet-new-page {
+  break-before: page !important;
+  page-break-before: always !important;
+}
+
+.offer-station-title-row {
+  border-bottom: 1px solid #e2e8f0;
+  margin-bottom: 0.55rem;
+  padding-bottom: 0.35rem;
+}
+
+.offer-station-kicker {
+  color: #f27f37;
+  font-weight: 800;
+  letter-spacing: 0.05em;
+  font-size: 0.78rem;
+}
+
+.offer-station-title-row h2 {
+  margin: 0.15rem 0 0;
+  color: #0f2f67;
+  font-size: 1.45rem;
+}
+
+.offer-station-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.55rem;
+}
+
+.offer-station-card {
+  border: 1px solid #d5dbe6;
+  border-radius: 10px;
+  padding: 0.5rem 0.55rem;
+  background: #f8fafc;
+}
+
+.offer-station-card h3 {
+  margin: 0 0 0.28rem 0;
+  color: #102a56;
+  font-size: 0.95rem;
+}
+
+.offer-station-list > div {
+  display: flex;
+  justify-content: space-between;
+  gap: 0.7rem;
+  border-bottom: 1px dashed #d5dbe6;
+  padding: 0.14rem 0;
+  font-size: 0.8rem;
+}
+
+.offer-station-list > div:last-child {
+  border-bottom: 0;
+}
+
+.offer-station-list span {
+  color: #475569;
+}
+
+.offer-station-list strong {
+  color: #0f172a;
+  text-align: right;
+}
+
+body.pdf-capture-offer .offer-highlights-block {
+  padding: 0.4rem 0.55rem !important;
+  margin-bottom: 0.5rem !important;
+}
+
+body.pdf-capture-offer .offer-highlights-title {
+  font-size: 0.8rem !important;
+  margin-bottom: 0.22rem !important;
+}
+
+body.pdf-capture-offer .offer-highlights-block ul {
+  padding-left: 0.85rem !important;
+}
+
+body.pdf-capture-offer .offer-highlights-block li {
+  font-size: 0.74rem !important;
+  line-height: 1.2 !important;
+  margin: 0.12rem 0 !important;
+}
+
+body.pdf-capture-offer .offer-top-grid {
+  gap: 0.35rem !important;
+  margin-bottom: 0.45rem !important;
+}
+
+body.pdf-capture-offer .offer-top-card {
+  padding: 0.35rem 0.42rem !important;
+  border-radius: 10px !important;
+}
+
+body.pdf-capture-offer .offer-top-card h3 {
+  font-size: 0.82rem !important;
+  margin-bottom: 0.2rem !important;
+}
+
+body.pdf-capture-offer .offer-insight-grid {
+  grid-template-columns: 1fr !important;
+  gap: 0.8rem !important;
+  margin-top: 0.7rem !important;
+}
+
+body.pdf-capture-offer .offer-gen-block,
+body.pdf-capture-offer .offer-benefits-block {
+  padding: 0.38rem 0.45rem !important;
+}
+
+body.pdf-capture-offer .offer-gen-block h3,
+body.pdf-capture-offer .offer-benefits-block h3 {
+  font-size: 1.05rem !important;
+  margin: 0.12rem 0 0.25rem !important;
+}
+
+body.pdf-capture-offer .offer-bars {
+  height: 150px !important;
+  gap: 3px !important;
+}
+
+body.pdf-capture-offer .offer-benefit-card {
+  min-height: 74px !important;
+  padding: 0.36rem 0.4rem !important;
+}
+
+body.pdf-capture-offer .offer-benefit-title {
+  font-size: 0.78rem !important;
+  margin-bottom: 0.12rem !important;
+}
+
+body.pdf-capture-offer .offer-benefit-text {
+  font-size: 0.67rem !important;
+  line-height: 1.12 !important;
+}
+
+body.pdf-capture-offer .offer-station-sheet {
+  padding: 0.55rem 0.6rem !important;
+}
+
+body.pdf-capture-offer .offer-station-title-row h2 {
+  font-size: 1.1rem !important;
+}
+
+body.pdf-capture-offer .offer-station-grid {
+  gap: 0.35rem !important;
+}
+
+body.pdf-capture-offer .offer-station-card {
+  padding: 0.35rem 0.42rem !important;
+}
+
+body.pdf-capture-offer .offer-station-card h3 {
+  font-size: 0.8rem !important;
+}
+
+body.pdf-capture-offer .offer-station-list > div {
+  font-size: 0.68rem !important;
+  padding: 0.08rem 0 !important;
+}
+
+body.pdf-capture-offer .offer-print-container .print-table {
+  font-size: 9.3px !important;
+}
+
+body.pdf-capture-offer .offer-print-container .print-table th,
+body.pdf-capture-offer .offer-print-container .print-table td {
+  padding: 3px 4px !important;
+  line-height: 1.12 !important;
+}
+
+.invoice-print-container {
+  padding: 10mm 8mm;
+  width: 210mm;
+  max-width: 210mm;
+  min-height: auto;
+  margin: 0 auto;
+  box-sizing: border-box;
+  background: #fff;
+  overflow: visible;
+}
+
+.invoice-print-container .print-table {
+  width: 100%;
+  table-layout: auto;
+  font-size: 11px;
+}
+
+.invoice-print-container .print-table th:first-child,
+.invoice-print-container .print-table td:first-child {
+  width: 3%;
+}
+
+.invoice-print-container .print-table th:nth-child(2),
+.invoice-print-container .print-table td:nth-child(2) {
+  width: 56%;
+  min-width: 0;
+  word-break: break-word;
+  overflow-wrap: anywhere;
+  white-space: normal;
+}
+
+.invoice-print-container .print-table th:nth-child(3),
+.invoice-print-container .print-table td:nth-child(3) {
+  width: 4%;
+}
+
+.invoice-print-container .print-table th:nth-child(4),
+.invoice-print-container .print-table td:nth-child(4) {
+  width: 4%;
+}
+
+.invoice-print-container .print-table th:nth-child(5),
+.invoice-print-container .print-table td:nth-child(5),
+.invoice-print-container .print-table th:nth-child(6),
+.invoice-print-container .print-table td:nth-child(6),
+.invoice-print-container .print-table th:nth-child(7),
+.invoice-print-container .print-table td:nth-child(7),
+.invoice-print-container .print-table th:nth-child(8),
+.invoice-print-container .print-table td:nth-child(8) {
+  width: 6%;
+  white-space: nowrap;
+}
+
+.invoice-print-container .print-table th,
+.invoice-print-container .print-table td {
+  padding: 8px 8px;
+}
+
+.invoice-print-container .print-table th {
+  font-size: 11px;
+}
+
+.invoice-print-container .print-total-row td {
+  font-size: 0.92rem !important;
+  white-space: nowrap;
+}
+
+body.pdf-capture-invoice .print-overlay {
+  position: static !important;
+  height: auto !important;
+  overflow: visible !important;
+  padding: 0 !important;
+  background: transparent !important;
+}
+
+body.pdf-capture-invoice .invoice-print-container {
+  width: 202mm !important;
+  max-width: 202mm !important;
+  padding: 4mm 2mm !important;
+  margin: 0 auto !important;
+}
+
+body.pdf-capture-invoice .invoice-print-header {
+  padding: 0.45rem 0.55rem !important;
+  margin-bottom: 0.45rem !important;
+}
+
+body.pdf-capture-invoice .invoice-title {
+  font-size: 1.55rem !important;
+  margin: 0.1rem 0 0.18rem !important;
+}
+
+body.pdf-capture-invoice .invoice-doc-meta {
+  font-size: 0.78rem !important;
+  margin-bottom: 0.2rem !important;
+}
+
+body.pdf-capture-invoice .invoice-orange-line {
+  height: 4px !important;
+  margin-top: 0.2rem !important;
+}
+
+body.pdf-capture-invoice .invoice-customer {
+  margin-top: 0.25rem !important;
+}
+
+body.pdf-capture-invoice .invoice-customer p {
+  font-size: 0.84rem !important;
+  line-height: 1.25 !important;
+}
+
+body.pdf-capture-invoice .invoice-print-container .print-table {
+  font-size: 9.4px !important;
+  margin-bottom: 0.75rem !important;
+}
+
+body.pdf-capture-invoice .invoice-print-container .print-table th,
+body.pdf-capture-invoice .invoice-print-container .print-table td {
+  padding: 3px 4px !important;
+  line-height: 1.14 !important;
+}
+
+body.pdf-capture-invoice .invoice-print-container .print-table th {
+  font-size: 9px !important;
+}
+
+body.pdf-capture-invoice .invoice-print-container .print-total-row td {
+  font-size: 0.78rem !important;
+}
+
 
 .offer-cover-page {
   position: relative;
   width: 100%;
   min-height: 297mm;
   height: 297mm;
-  background-size: cover;
-  background-position: center top;
-  background-repeat: no-repeat;
+  background-color: #0a2c63;
   border: 1px solid #c8ced8;
+  overflow: hidden;
   break-after: page;
   page-break-after: always;
   margin-bottom: 0;
+}
+
+.offer-cover-image {
+  position: absolute;
+  top: -1.1%;
+  left: -1.1%;
+  width: 102.2%;
+  height: 102.2%;
+  object-fit: contain;
+  object-position: center top;
 }
 
 .offer-cover-close {
@@ -609,6 +1345,14 @@ button.danger:hover {
   background: rgba(14, 33, 70, 0.38);
 }
 
+.offer-cover-manager {
+  margin-top: 0.45rem;
+  color: #d5e5ff;
+  font-size: 1rem;
+  font-weight: 600;
+  text-shadow: 0 2px 10px rgba(0, 0, 0, 0.35);
+}
+
 .offer-cover-metrics {
   margin-top: 1.55rem;
   padding-top: 0.85rem;
@@ -616,12 +1360,143 @@ button.danger:hover {
   line-height: 1.22;
   color: #e8edf6;
 }
+
+.offer-manager-bar {
+  margin-top: 0.7rem;
+  border-radius: 10px;
+  background: linear-gradient(90deg, #0b2f73 0%, #123c8e 100%);
+  color: #eaf2ff;
+  padding: 0.5rem 0.75rem;
+  display: flex;
+  align-items: center;
+  gap: 0.7rem;
+  flex-wrap: wrap;
+}
+
+.offer-manager-bar-kicker {
+  font-size: 0.68rem;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: #b9cdf5;
+  font-weight: 700;
+}
+
+.offer-manager-bar-name {
+  font-size: 0.95rem;
+  font-weight: 700;
+  color: #ffffff;
+}
+
+.offer-manager-bar-phone {
+  margin-left: auto;
+  color: #ffffff;
+  text-decoration: none;
+  font-size: 0.95rem;
+  font-weight: 800;
+}
+
+.offer-station-economics {
+  margin-top: 0.65rem;
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 0.55rem;
+}
+
+.offer-station-economics-card {
+  border: 1px solid #d5dbe6;
+  border-radius: 10px;
+  padding: 0.5rem 0.55rem;
+  background: #f8fafc;
+}
+
+.offer-station-economics-card h3 {
+  margin: 0 0 0.28rem 0;
+  color: #102a56;
+  font-size: 0.95rem;
+}
+
+.offer-station-qr-card {
+  border: 1px solid #d5dbe6;
+  border-radius: 10px;
+  padding: 0.45rem;
+  min-width: 120px;
+  background: #f8fafc;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0.28rem;
+  font-size: 0.68rem;
+  color: #475569;
+  text-transform: uppercase;
+  letter-spacing: 0.02em;
+}
+
+.offer-station-qr-card img {
+  width: 88px;
+  height: 88px;
+  border-radius: 6px;
+  background: #fff;
+  padding: 4px;
+}
 @media print {
+  @page {
+    size: A4 portrait;
+    margin: 8mm;
+  }
   body { padding: 0; background: white; }
   .container { display: none !important; }
   .no-print { display: none !important; }
   .print-overlay { position: static; background: transparent; padding: 0; }
   .print-container { margin: 0; width: 100%; box-shadow: none; }
+  .invoice-print-container {
+    width: 194mm;
+    max-width: 194mm;
+    min-height: auto;
+    padding: 0;
+    margin: 0 auto;
+    overflow: visible;
+  }
+  .invoice-print-container .print-table {
+    width: 100%;
+    table-layout: auto;
+    font-size: 10.5pt;
+    page-break-inside: auto;
+  }
+  .invoice-print-container .print-table tr {
+    page-break-inside: avoid;
+    page-break-after: auto;
+  }
+  .invoice-print-container .print-table th,
+  .invoice-print-container .print-table td {
+    padding: 4px 5px;
+    line-height: 1.2;
+  }
+  .invoice-print-container .print-table th {
+    font-size: 8.8pt;
+  }
+  .invoice-print-container .print-total-row td {
+    font-size: 9.2pt !important;
+    white-space: nowrap;
+  }
+  .invoice-print-header {
+    margin-bottom: 0.6rem !important;
+  }
+  .invoice-title {
+    font-size: 1.9rem !important;
+    margin: 0.3rem 0 !important;
+  }
+  .invoice-doc-meta {
+    margin: 0.25rem 0 0.4rem !important;
+  }
+  .invoice-customer {
+    margin-top: 0.35rem !important;
+  }
+  .invoice-customer p {
+    margin: 0 !important;
+    line-height: 1.25 !important;
+    font-size: 10.5pt !important;
+  }
 }
 
 

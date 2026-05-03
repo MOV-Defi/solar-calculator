@@ -1,0 +1,9 @@
+[build]
+  publish = "."
+  functions = "netlify/functions"
+
+[[redirects]]
+  from = "/api/templates"
+  to = "/.netlify/functions/templates"
+  status = 200
+

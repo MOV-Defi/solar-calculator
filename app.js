@@ -73,7 +73,80 @@ const DEFAULT_RATES = { eur: 51.35, usd: 44.10 };
 const DEFAULT_CLIENT_INFO = { name: "", address: "" };
 const DEFAULT_OFFER_PURPOSE = "для власних потреб";
 const DEFAULT_COVER_SYSTEM_NAME = "";
+const DEFAULT_QR_URL = "https://www.solarservice.pro/";
+const DEFAULT_MANAGER_CONTACTS = [
+  { id: "manager_oleg_minakov", name: "Олег Мінаков", phone: "+380933990622" }
+];
 const COVER_PAGE_TYPES = ["Будинок", "Квартира", "Виробництво", "Наземна станція"];
+const GENERATION_REGION_PROFILES = {
+  south: {
+    annualYieldKwhPerKw: 1300,
+    monthFactors: [0.045, 0.06, 0.09, 0.11, 0.125, 0.13, 0.135, 0.125, 0.095, 0.055, 0.02, 0.01]
+  },
+  center: {
+    annualYieldKwhPerKw: 1180,
+    monthFactors: [0.035, 0.05, 0.085, 0.11, 0.125, 0.13, 0.13, 0.12, 0.095, 0.06, 0.035, 0.025]
+  },
+  west: {
+    annualYieldKwhPerKw: 1080,
+    monthFactors: [0.03, 0.045, 0.08, 0.11, 0.13, 0.135, 0.13, 0.115, 0.095, 0.065, 0.04, 0.025]
+  },
+  north: {
+    annualYieldKwhPerKw: 1120,
+    monthFactors: [0.03, 0.045, 0.08, 0.11, 0.125, 0.13, 0.13, 0.118, 0.098, 0.07, 0.04, 0.024]
+  },
+  east: {
+    annualYieldKwhPerKw: 1210,
+    monthFactors: [0.04, 0.055, 0.088, 0.112, 0.126, 0.13, 0.132, 0.122, 0.096, 0.064, 0.033, 0.022]
+  },
+  mountain: {
+    annualYieldKwhPerKw: 1040,
+    monthFactors: [0.028, 0.043, 0.078, 0.11, 0.131, 0.137, 0.133, 0.117, 0.098, 0.068, 0.04, 0.017]
+  }
+};
+const GENERATION_CITY_TO_PROFILE = {
+  "Миколаїв": "south",
+  "Одеса": "south",
+  "Херсон": "south",
+  "Сімферополь": "south",
+  "Севастополь": "south",
+  "Ялта": "south",
+  "Євпаторія": "south",
+  "Керч": "south",
+  "Феодосія": "south",
+  "Київ": "center",
+  "Вінниця": "center",
+  "Черкаси": "center",
+  "Кропивницький": "center",
+  "Полтава": "center",
+  "Дніпро": "center",
+  "Кременчук": "center",
+  "Біла Церква": "center",
+  "Житомир": "north",
+  "Чернігів": "north",
+  "Суми": "north",
+  "Луцьк": "north",
+  "Рівне": "north",
+  "Львів": "west",
+  "Івано-Франківськ": "west",
+  "Тернопіль": "west",
+  "Хмельницький": "west",
+  "Ужгород": "mountain",
+  "Чернівці": "west",
+  "Харків": "east",
+  "Запоріжжя": "east",
+  "Донецьк": "east",
+  "Луганськ": "east",
+  "Кривий Ріг": "east",
+  "Маріуполь": "east",
+  "Мелітополь": "south",
+  "Бердянськ": "south"
+};
+const GENERATION_LOCATIONS = Object.keys(GENERATION_CITY_TO_PROFILE);
+const GENERATION_MOUNT_TYPES = {
+  roof: { label: "Дах", multiplier: 1.0 },
+  ground: { label: "Наземна", multiplier: 1.08 }
+};
 const DEFAULT_OTHER_EXPENSES = [{ id: 1, name: "Транспорт / ПММ", quantity: 1, price: 100, currency: "USD", incomingPrice: 0, markupPercent: 0 }];
 const DEFAULT_WORK_ITEMS = [{ id: 1, name: "Монтажні та пусконалагоджувальні роботи", quantity: 1, price: 0, currency: "USD", incomingPrice: 0, markupPercent: 0 }];
 const DEFAULT_COMMERCIAL_WORK_ITEMS = [
@@ -175,6 +248,33 @@ const getTemplatesCatalogSignature = (templatesList = []) => JSON.stringify(
     data: template.data
   }))
 );
+
+const fetchServerTemplatesCatalog = async () => {
+  try {
+    const response = await fetch('/api/templates', { method: 'GET' });
+    if (!response.ok) return null;
+    const payload = await response.json().catch(() => null);
+    const normalized = normalizeImportedTemplates(payload?.data);
+    return normalized || null;
+  } catch (_) {
+    return null;
+  }
+};
+
+const saveServerTemplatesCatalog = async (templatesList = []) => {
+  try {
+    const response = await fetch('/api/templates', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(buildTemplatesCatalogPayload(templatesList))
+    });
+    if (!response.ok) return false;
+    const payload = await response.json().catch(() => null);
+    return !!payload?.ok;
+  } catch (_) {
+    return false;
+  }
+};
 const buildCatalogPayloadFromPricingMap = (pricingMap = {}) => {
   const items = [];
   Object.entries(pricingMap || {}).forEach(([category, byName]) => {
@@ -324,6 +424,20 @@ function App() {
   const [offerPurpose, setOfferPurpose] = useState(() => getSaved('solar_offerPurpose', DEFAULT_OFFER_PURPOSE));
   const [coverSystemName, setCoverSystemName] = useState(() => getSaved('solar_coverSystemName', DEFAULT_COVER_SYSTEM_NAME));
   const [coverPageType, setCoverPageType] = useState(() => getSaved('solar_coverPageType', COVER_PAGE_TYPES[0]));
+  const [showOfferStationSheet, setShowOfferStationSheet] = useState(() => getSaved('solar_showOfferStationSheet', false));
+  const [generationLocation, setGenerationLocation] = useState(() => getSaved('solar_generationLocation', 'Миколаїв'));
+  const [generationMountType, setGenerationMountType] = useState(() => getSaved('solar_generationMountType', 'roof'));
+  const [energyTariffUah, setEnergyTariffUah] = useState(() => getSaved('solar_energyTariffUah', 4.32));
+  const [typicalLoadKw, setTypicalLoadKw] = useState(() => getSaved('solar_typicalLoadKw', 2));
+  const [coverQrUrl, setCoverQrUrl] = useState(() => getSaved('solar_coverQrUrl', DEFAULT_QR_URL));
+  const [offerSettingsCollapsed, setOfferSettingsCollapsed] = useState(() => getSaved('solar_offerSettingsCollapsed', false));
+  const [managerContacts, setManagerContacts] = useState(() => {
+    const saved = getSaved('solar_managerContacts', DEFAULT_MANAGER_CONTACTS);
+    return Array.isArray(saved) && saved.length > 0 ? saved : DEFAULT_MANAGER_CONTACTS;
+  });
+  const [selectedManagerId, setSelectedManagerId] = useState(() => getSaved('solar_selectedManagerId', DEFAULT_MANAGER_CONTACTS[0].id));
+  const [newManagerName, setNewManagerName] = useState('');
+  const [newManagerPhone, setNewManagerPhone] = useState('');
   const [equipmentGroups, setEquipmentGroups] = useState(() => getSaved('solar_equipmentGroups', createDefaultGroups()));
   
   const [otherExpenses, setOtherExpenses] = useState(() => getSaved('solar_otherExpenses', cloneList(DEFAULT_OTHER_EXPENSES)));
@@ -397,22 +511,6 @@ function App() {
       };
     });
   }, []);
-
-  useEffect(() => {
-    if (projectType !== 'commercial') return;
-    if (!Array.isArray(otherExpenses) || otherExpenses.length === 0) return;
-
-    setWorkItems(prev => {
-      const normalizedPrev = Array.isArray(prev) ? prev : [];
-      const movedItems = otherExpenses.map((item, idx) => ({
-        ...item,
-        id: Date.now() + idx + 100,
-        name: item.name || "Додаткова витрата"
-      }));
-      return [...normalizedPrev, ...movedItems];
-    });
-    setOtherExpenses([]);
-  }, [projectType, otherExpenses]);
 
   // Logic to build a database from templates and current groups, grouped by Type
   const productDatabase = useMemo(() => {
@@ -922,21 +1020,27 @@ function App() {
   }, [workspaceHandle, productLastValues]);
 
   useEffect(() => {
-    if (!workspaceHandle) {
-      templatesLoadedRef.current = false;
-      return;
-    }
-
     let active = true;
     (async () => {
-      const templatesCatalog = await readWorkspaceJson(workspaceHandle, TEMPLATES_CATALOG_FILE);
+      const serverTemplates = await fetchServerTemplatesCatalog();
       if (!active) return;
 
-      if (templatesCatalog) {
-        const normalizedTemplates = normalizeImportedTemplates(templatesCatalog);
-        if (normalizedTemplates) {
-          setTemplates(normalizedTemplates);
-          lastTemplatesSignatureRef.current = getTemplatesCatalogSignature(normalizedTemplates);
+      if (serverTemplates) {
+        setTemplates(serverTemplates);
+        lastTemplatesSignatureRef.current = getTemplatesCatalogSignature(serverTemplates);
+        templatesLoadedRef.current = true;
+        return;
+      }
+
+      if (workspaceHandle) {
+        const templatesCatalog = await readWorkspaceJson(workspaceHandle, TEMPLATES_CATALOG_FILE);
+        if (!active) return;
+        if (templatesCatalog) {
+          const normalizedTemplates = normalizeImportedTemplates(templatesCatalog);
+          if (normalizedTemplates) {
+            setTemplates(normalizedTemplates);
+            lastTemplatesSignatureRef.current = getTemplatesCatalogSignature(normalizedTemplates);
+          }
         }
       }
 
@@ -947,14 +1051,20 @@ function App() {
   }, [workspaceHandle]);
 
   useEffect(() => {
-    if (!workspaceHandle || !templatesLoadedRef.current) return;
+    if (!templatesLoadedRef.current) return;
     if (templatesWriteTimerRef.current) clearTimeout(templatesWriteTimerRef.current);
     templatesWriteTimerRef.current = setTimeout(async () => {
       const signature = getTemplatesCatalogSignature(templates);
       if (signature === lastTemplatesSignatureRef.current) return;
-      const payload = buildTemplatesCatalogPayload(templates);
-      const ok = await writeWorkspaceJson(workspaceHandle, TEMPLATES_CATALOG_FILE, payload);
-      if (ok) lastTemplatesSignatureRef.current = signature;
+      let saved = false;
+      const serverSaved = await saveServerTemplatesCatalog(templates);
+      if (serverSaved) saved = true;
+      if (workspaceHandle) {
+        const payload = buildTemplatesCatalogPayload(templates);
+        const wsSaved = await writeWorkspaceJson(workspaceHandle, TEMPLATES_CATALOG_FILE, payload);
+        if (wsSaved) saved = true;
+      }
+      if (saved) lastTemplatesSignatureRef.current = signature;
     }, 700);
     return () => {
       if (templatesWriteTimerRef.current) clearTimeout(templatesWriteTimerRef.current);
@@ -1032,12 +1142,27 @@ function App() {
 
   const applyProjectData = (project) => {
     const data = project?.data || {};
+    const loadedManagers = Array.isArray(data.managerContacts) && data.managerContacts.length > 0
+      ? data.managerContacts
+      : DEFAULT_MANAGER_CONTACTS;
     setEquipmentGroups(data.equipmentGroups && typeof data.equipmentGroups === 'object' ? data.equipmentGroups : createDefaultGroups());
     setWorkItems(Array.isArray(data.workItems) ? cloneList(data.workItems) : cloneList(DEFAULT_WORK_ITEMS));
     setOtherExpenses(Array.isArray(data.otherExpenses) ? cloneList(data.otherExpenses) : cloneList(DEFAULT_OTHER_EXPENSES));
     setOfferPurpose(typeof data.offerPurpose === 'string' ? data.offerPurpose : DEFAULT_OFFER_PURPOSE);
     setCoverSystemName(typeof data.coverSystemName === 'string' ? data.coverSystemName : DEFAULT_COVER_SYSTEM_NAME);
     setCoverPageType(typeof data.coverPageType === 'string' ? data.coverPageType : COVER_PAGE_TYPES[0]);
+    setShowOfferStationSheet(typeof data.showOfferStationSheet === 'boolean' ? data.showOfferStationSheet : false);
+    setGenerationLocation(typeof data.generationLocation === 'string' ? data.generationLocation : 'Миколаїв');
+    setGenerationMountType(typeof data.generationMountType === 'string' ? data.generationMountType : 'roof');
+    setEnergyTariffUah(data.energyTariffUah ?? 4.32);
+    setTypicalLoadKw(data.typicalLoadKw ?? 2);
+    setCoverQrUrl(typeof data.coverQrUrl === 'string' ? data.coverQrUrl : DEFAULT_QR_URL);
+    setManagerContacts(loadedManagers);
+    setSelectedManagerId(
+      typeof data.selectedManagerId === 'string' && loadedManagers.some((m) => m.id === data.selectedManagerId)
+        ? data.selectedManagerId
+        : loadedManagers[0].id
+    );
     setInstallPercent(data.installPercent ?? 15);
     setRates(data.rates && typeof data.rates === 'object' ? data.rates : DEFAULT_RATES);
     setClientInfo(data.clientInfo && typeof data.clientInfo === 'object' ? data.clientInfo : DEFAULT_CLIENT_INFO);
@@ -1061,12 +1186,27 @@ function App() {
 
   const applyTemplateData = (template) => {
     const data = template?.data || {};
+    const loadedManagers = Array.isArray(data.managerContacts) && data.managerContacts.length > 0
+      ? data.managerContacts
+      : DEFAULT_MANAGER_CONTACTS;
     setEquipmentGroups(data.equipmentGroups && typeof data.equipmentGroups === 'object' ? data.equipmentGroups : createDefaultGroups());
     setWorkItems(Array.isArray(data.workItems) ? cloneList(data.workItems) : cloneList(DEFAULT_WORK_ITEMS));
     setOtherExpenses(Array.isArray(data.otherExpenses) ? cloneList(data.otherExpenses) : cloneList(DEFAULT_OTHER_EXPENSES));
     setOfferPurpose(typeof data.offerPurpose === 'string' ? data.offerPurpose : DEFAULT_OFFER_PURPOSE);
     setCoverSystemName(typeof data.coverSystemName === 'string' ? data.coverSystemName : DEFAULT_COVER_SYSTEM_NAME);
     setCoverPageType(typeof data.coverPageType === 'string' ? data.coverPageType : COVER_PAGE_TYPES[0]);
+    setShowOfferStationSheet(typeof data.showOfferStationSheet === 'boolean' ? data.showOfferStationSheet : false);
+    setGenerationLocation(typeof data.generationLocation === 'string' ? data.generationLocation : 'Миколаїв');
+    setGenerationMountType(typeof data.generationMountType === 'string' ? data.generationMountType : 'roof');
+    setEnergyTariffUah(data.energyTariffUah ?? 4.32);
+    setTypicalLoadKw(data.typicalLoadKw ?? 2);
+    setCoverQrUrl(typeof data.coverQrUrl === 'string' ? data.coverQrUrl : DEFAULT_QR_URL);
+    setManagerContacts(loadedManagers);
+    setSelectedManagerId(
+      typeof data.selectedManagerId === 'string' && loadedManagers.some((m) => m.id === data.selectedManagerId)
+        ? data.selectedManagerId
+        : loadedManagers[0].id
+    );
     setInstallPercent(data.installPercent ?? 15);
     setClientDiscountPercent(data.clientDiscountPercent ?? 0);
     setTaxMode(data.taxMode || 'none');
@@ -1103,6 +1243,14 @@ function App() {
         offerPurpose,
         coverSystemName,
         coverPageType,
+        showOfferStationSheet,
+        generationLocation,
+        generationMountType,
+        energyTariffUah,
+        typicalLoadKw,
+        coverQrUrl,
+        managerContacts,
+        selectedManagerId,
         equipmentGroups,
         otherExpenses,
         workItems,
@@ -1248,6 +1396,7 @@ function App() {
         } else {
           lastTemplatesSignatureRef.current = importedSignature;
         }
+        await saveServerTemplatesCatalog(normalizedTemplates);
         alert('Шаблони імпортовано.');
       } catch (error) {
         console.error('Templates import error', error);
@@ -1294,6 +1443,14 @@ function App() {
         offerPurpose,
         coverSystemName,
         coverPageType,
+        showOfferStationSheet,
+        generationLocation,
+        generationMountType,
+        energyTariffUah,
+        typicalLoadKw,
+        coverQrUrl,
+        managerContacts,
+        selectedManagerId,
         workItems,
         otherExpenses,
         installPercent,
@@ -1313,6 +1470,43 @@ function App() {
       }
       return [...prev, payload];
     });
+    setTemplateName(safeName);
+    setSelectedTemplateId(id);
+  };
+
+  const saveTemplateAsNew = (e) => {
+    if (e?.preventDefault) e.preventDefault();
+    const safeName = templateName.trim() || `Шаблон ${new Date().toLocaleDateString('uk-UA')}`;
+    const id = String(Date.now());
+    rememberProjectCatalog(equipmentGroups);
+
+    const payload = {
+      id,
+      name: safeName,
+      data: {
+        equipmentGroups,
+        offerPurpose,
+        coverSystemName,
+        coverPageType,
+        showOfferStationSheet,
+        generationLocation,
+        generationMountType,
+        energyTariffUah,
+        typicalLoadKw,
+        coverQrUrl,
+        managerContacts,
+        selectedManagerId,
+        workItems,
+        otherExpenses,
+        installPercent,
+        clientDiscountPercent,
+        taxMode,
+        groupSettings,
+        autoMountingQuantity
+      }
+    };
+
+    setTemplates(prev => [...prev, payload]);
     setTemplateName(safeName);
     setSelectedTemplateId(id);
   };
@@ -1364,6 +1558,8 @@ function App() {
     setClientDiscountPercent(0);
     setTaxMode('none');
     setFopTaxPercent(7);
+    setGenerationLocation('Миколаїв');
+    setGenerationMountType('roof');
     setAutoMountingQuantity(true);
     setEquipmentGroups(nextEquipmentGroups);
     setGroupSettings(nextGroupSettings);
@@ -2013,6 +2209,15 @@ function App() {
   useEffect(() => { localStorage.setItem('solar_offerPurpose', JSON.stringify(offerPurpose)); }, [offerPurpose]);
   useEffect(() => { localStorage.setItem('solar_coverSystemName', JSON.stringify(coverSystemName)); }, [coverSystemName]);
   useEffect(() => { localStorage.setItem('solar_coverPageType', JSON.stringify(coverPageType)); }, [coverPageType]);
+  useEffect(() => { localStorage.setItem('solar_showOfferStationSheet', JSON.stringify(showOfferStationSheet)); }, [showOfferStationSheet]);
+  useEffect(() => { localStorage.setItem('solar_generationLocation', JSON.stringify(generationLocation)); }, [generationLocation]);
+  useEffect(() => { localStorage.setItem('solar_generationMountType', JSON.stringify(generationMountType)); }, [generationMountType]);
+  useEffect(() => { localStorage.setItem('solar_energyTariffUah', JSON.stringify(energyTariffUah)); }, [energyTariffUah]);
+  useEffect(() => { localStorage.setItem('solar_typicalLoadKw', JSON.stringify(typicalLoadKw)); }, [typicalLoadKw]);
+  useEffect(() => { localStorage.setItem('solar_coverQrUrl', JSON.stringify(coverQrUrl)); }, [coverQrUrl]);
+  useEffect(() => { localStorage.setItem('solar_offerSettingsCollapsed', JSON.stringify(offerSettingsCollapsed)); }, [offerSettingsCollapsed]);
+  useEffect(() => { localStorage.setItem('solar_managerContacts', JSON.stringify(managerContacts)); }, [managerContacts]);
+  useEffect(() => { localStorage.setItem('solar_selectedManagerId', JSON.stringify(selectedManagerId)); }, [selectedManagerId]);
   useEffect(() => { localStorage.setItem('solar_equipmentGroups', JSON.stringify(equipmentGroups)); }, [equipmentGroups]);
   useEffect(() => { localStorage.setItem('solar_otherExpenses', JSON.stringify(otherExpenses)); }, [otherExpenses]);
   useEffect(() => { localStorage.setItem('solar_workItems', JSON.stringify(workItems)); }, [workItems]);
@@ -2441,6 +2646,31 @@ function App() {
     ? ((inverterPowerKw > 0 ? (formatKw(inverterPowerKw) + " кВт") : "—") + (inverterTotalUah > 0 ? (" · " + formatMoney(inverterTotalUah) + " грн") : ""))
     : "—";
   const coverSubtitle = (offerPurpose || DEFAULT_OFFER_PURPOSE).trim() || DEFAULT_OFFER_PURPOSE;
+  const generationProfileKey = GENERATION_CITY_TO_PROFILE[generationLocation] || "south";
+  const selectedGenerationProfile = GENERATION_REGION_PROFILES[generationProfileKey] || GENERATION_REGION_PROFILES.south;
+  const selectedMountConfig = GENERATION_MOUNT_TYPES[generationMountType] || GENERATION_MOUNT_TYPES.roof;
+  const stationPowerKw = toNumber(calculations.stationPowerW, 0) / 1000;
+  const annualGenerationKwh = Math.max(
+    0,
+    Math.round(stationPowerKw * toNumber(selectedGenerationProfile.annualYieldKwhPerKw, 1300) * toNumber(selectedMountConfig.multiplier, 1))
+  );
+  const monthLabels = ['Січ', 'Лют', 'Бер', 'Кві', 'Тра', 'Чер', 'Лип', 'Сер', 'Вер', 'Жов', 'Лис', 'Гру'];
+  const monthFactors = Array.isArray(selectedGenerationProfile.monthFactors)
+    ? selectedGenerationProfile.monthFactors
+    : [0.045, 0.06, 0.09, 0.11, 0.125, 0.13, 0.135, 0.125, 0.095, 0.055, 0.02, 0.01];
+  const monthFactorSum = monthFactors.reduce((acc, value) => acc + toNumber(value, 0), 0) || 1;
+  const monthlyGeneration = monthFactors.map((f) => Math.round((annualGenerationKwh * toNumber(f, 0)) / monthFactorSum));
+  const annualSavingsUah = hasSolar ? Math.max(0, annualGenerationKwh * toNumber(energyTariffUah, 0)) : 0;
+  const paybackYears = annualSavingsUah > 0
+    ? (toNumber(calculations.sums.finalTotalWithDiscountUah, 0) / annualSavingsUah)
+    : 0;
+  const autonomyHours = (batteryKwh > 0 && toNumber(typicalLoadKw, 0) > 0)
+    ? (batteryKwh / toNumber(typicalLoadKw, 0))
+    : 0;
+  const normalizedCoverQrUrl = String(coverQrUrl || '').trim();
+  const coverQrSrc = normalizedCoverQrUrl
+    ? `https://api.qrserver.com/v1/create-qr-code/?size=140x140&format=png&data=${encodeURIComponent(normalizedCoverQrUrl)}`
+    : "";
   const orderBaseUsdForPercents = Math.max(0.000001, toNumber(calculations?.sums?.finalTotalWithDiscountUsd, 0));
   const pctOfOrder = (value) => ((toNumber(value, 0) / orderBaseUsdForPercents) * 100).toFixed(1);
   const isSidebarLayout = layoutMode === 'sidebar';
@@ -2453,6 +2683,33 @@ function App() {
       <span className="btn-icon" aria-hidden="true">{icon}</span>
       <span className="btn-label">{label}</span>
     </span>
+  );
+
+  const addManagerContact = () => {
+    const name = String(newManagerName || '').trim();
+    const phone = String(newManagerPhone || '').trim();
+    if (!name || !phone) return;
+    const nextManager = {
+      id: `manager_${Date.now()}`,
+      name,
+      phone
+    };
+    setManagerContacts((prev) => [...prev, nextManager]);
+    setSelectedManagerId(nextManager.id);
+    setNewManagerName('');
+    setNewManagerPhone('');
+  };
+
+  const activeManager = managerContacts.find((m) => m.id === selectedManagerId) || managerContacts[0] || null;
+  const managerNameLabel = String(activeManager?.name || '').trim() || 'Менеджер';
+  const managerPhoneLabel = String(activeManager?.phone || '').trim() || '—';
+  const managerPhoneHref = `tel:${managerPhoneLabel.replace(/[^\d+]/g, '')}`;
+  const OfferManagerBar = () => (
+    <div className="offer-manager-bar">
+      <span className="offer-manager-bar-kicker">Ваш менеджер</span>
+      <span className="offer-manager-bar-name">{managerNameLabel}</span>
+      <a className="offer-manager-bar-phone" href={managerPhoneHref}>{managerPhoneLabel}</a>
+    </div>
   );
 
   const distributeTaxToGoods = () => {
@@ -2819,6 +3076,7 @@ function App() {
             <div className="controls-row">
               <input type="text" value={templateName} onChange={(e) => setTemplateName(e.target.value)} placeholder="Назва шаблону..." className="project-name-input" />
               <button type="button" className="secondary menu-action-btn" data-cat="template" style={{background: '#4b5563'}} onClick={saveTemplate} data-title="Зберегти шаблон"><MenuBtnLabel icon="💾" label="Зберегти шаблон" /></button>
+              <button type="button" className="secondary menu-action-btn" data-cat="template" style={{background: '#2563eb'}} onClick={saveTemplateAsNew} data-title="Зберегти як новий"><MenuBtnLabel icon="🆕" label="Зберегти як" /></button>
               <button type="button" className="secondary menu-action-btn" data-cat="template" style={{background: '#0e7490'}} onClick={exportTemplatesCatalog} data-title="Експорт шаблонів"><MenuBtnLabel icon="⬇️" label="Експорт шаблонів" /></button>
               <button type="button" className="secondary menu-action-btn" data-cat="template" style={{background: '#0369a1'}} onClick={openTemplatesImportPicker} data-title="Імпорт шаблонів"><MenuBtnLabel icon="⬆️" label="Імпорт шаблонів" /></button>
               <input id="templates-file-input" type="file" accept=".json" onChange={importTemplatesCatalog} style={{display: 'none'}} />
@@ -2844,7 +3102,20 @@ function App() {
         </div>
       </div>
 
-      <div className="card grid grid-cols-3" style={{marginTop: '-0.25rem'}}>
+      <div className="card" style={{marginTop: '-0.25rem'}}>
+        <div style={{display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '0.75rem', marginBottom: offerSettingsCollapsed ? 0 : '0.75rem'}}>
+          <div style={{fontWeight: 800, color: 'var(--text-muted)', letterSpacing: '0.02em'}}>Налаштування КП</div>
+          <button
+            type="button"
+            className="secondary"
+            style={{background: '#334155', padding: '0.45rem 0.8rem'}}
+            onClick={() => setOfferSettingsCollapsed((prev) => !prev)}
+          >
+            {offerSettingsCollapsed ? '▾ Розгорнути' : '▴ Згорнути'}
+          </button>
+        </div>
+        {!offerSettingsCollapsed && (
+        <div className="grid grid-cols-4" style={{gap: '0.75rem'}}>
         <div className="input-group" style={{margin: 0}}>
           <label>Підзаголовок КП</label>
           <input type="text" value={offerPurpose} onChange={(e) => setOfferPurpose(e.target.value)} placeholder="для власних потреб / для підприємства / ..." />
@@ -2859,6 +3130,68 @@ function App() {
             {COVER_PAGE_TYPES.map((type) => <option key={type} value={type}>{type}</option>)}
           </select>
         </div>
+        <div className="input-group" style={{margin: 0}}>
+          <label>Окремий лист у КП</label>
+          <label style={{display: 'flex', alignItems: 'center', gap: '0.5rem', minHeight: '38px', paddingTop: 0}}>
+            <input
+              type="checkbox"
+              checked={showOfferStationSheet}
+              onChange={(e) => setShowOfferStationSheet(e.target.checked)}
+            />
+            <span>Додати “Дані станції”</span>
+          </label>
+        </div>
+        <div className="input-group" style={{margin: 0}}>
+          <label>Локація генерації</label>
+          <select value={generationLocation} onChange={(e) => setGenerationLocation(e.target.value)}>
+            {GENERATION_LOCATIONS.map((location) => (
+              <option key={location} value={location}>{location}</option>
+            ))}
+          </select>
+        </div>
+        <div className="input-group" style={{margin: 0}}>
+          <label>Тип встановлення</label>
+          <select value={generationMountType} onChange={(e) => setGenerationMountType(e.target.value)}>
+            {Object.entries(GENERATION_MOUNT_TYPES).map(([value, cfg]) => (
+              <option key={value} value={value}>{cfg.label}</option>
+            ))}
+          </select>
+        </div>
+        <div className="input-group" style={{margin: 0}}>
+          <label>Тариф, грн/кВт·год</label>
+          <input type="number" step="0.01" value={energyTariffUah} onChange={(e) => setEnergyTariffUah(parseNumberInput(e.target.value))} />
+        </div>
+        <div className="input-group" style={{margin: 0}}>
+          <label>Типове навантаження, кВт</label>
+          <input type="number" step="0.1" value={typicalLoadKw} onChange={(e) => setTypicalLoadKw(parseNumberInput(e.target.value))} />
+        </div>
+        <div className="input-group" style={{margin: 0}}>
+          <label>QR посилання (сайт/менеджер)</label>
+          <input type="text" value={coverQrUrl} onChange={(e) => setCoverQrUrl(e.target.value)} placeholder={DEFAULT_QR_URL} />
+        </div>
+        <div className="input-group" style={{margin: 0}}>
+          <label>Менеджер у КП</label>
+          <select value={selectedManagerId} onChange={(e) => setSelectedManagerId(e.target.value)}>
+            {managerContacts.map((m) => (
+              <option key={m.id} value={m.id}>{m.name} · {m.phone}</option>
+            ))}
+          </select>
+        </div>
+        <div className="input-group" style={{margin: 0}}>
+          <label>Новий менеджер (ПІБ)</label>
+          <input type="text" value={newManagerName} onChange={(e) => setNewManagerName(e.target.value)} placeholder="Напр. Олег Мінаков" />
+        </div>
+        <div className="input-group" style={{margin: 0}}>
+          <label>Телефон менеджера</label>
+          <input type="text" value={newManagerPhone} onChange={(e) => setNewManagerPhone(e.target.value)} placeholder="+380..." />
+        </div>
+        <div className="input-group" style={{margin: 0, display: 'flex', alignItems: 'flex-end'}}>
+          <button type="button" className="secondary" style={{width: '100%', background: '#0f766e'}} onClick={addManagerContact}>
+            + Додати менеджера
+          </button>
+        </div>
+        </div>
+        )}
       </div>
 
       <div className="card grid grid-cols-4">
@@ -2877,7 +3210,7 @@ function App() {
         </div>
       </div>
 
-      <div className="card table-container" style={{padding: '0'}}>
+      <div className="card table-container aux-table-container" style={{padding: '0'}}>
         {projectType !== 'product' && (
           <div className="flex justify-between items-center" style={{padding: '0.75rem 1rem', borderBottom: '1px solid var(--border-color)', gap: '0.75rem', flexWrap: 'wrap'}}>
             <div style={{fontWeight: 700, color: 'var(--text-muted)', fontSize: '0.9rem'}}>Категорії</div>
@@ -3430,95 +3763,8 @@ function App() {
         </table>
       </div>
 
-      {projectType === 'commercial' && (
-        <div className="card table-container" style={{padding: '0'}}>
-          <div className="flex justify-between items-center" style={{padding: '1.5rem', paddingBottom: '1rem'}}>
-            <h2 style={{margin: 0}}>Монтаж та запуск станції (Комерційний шаблон)</h2>
-            <button type="button" className="secondary" onClick={() => addItem(setWorkItems, "Нова робота / витрата")}>+ Додати позицію</button>
-          </div>
-          <div style={{padding: '0 1.5rem 1.5rem'}}>
-            <div>
-              <table style={{border: '1px solid var(--border-color)'}}>
-                <thead>
-                  <tr style={{backgroundColor: '#1E1E1E'}}>
-                    <th className="col-name text-left">Найменування робіт / витрат</th>
-                    <th className="col-qty text-right">Кіл-ть</th>
-                    <th className="col-currency text-center">Вал.</th>
-                    <th className="col-price text-right">Ціна (од)</th>
-                    <th className="col-price text-right">Ціна (₴)</th>
-                    <th className="col-readonly text-right">Сума ($)</th>
-                    <th className="col-readonly text-right">Сума (₴)</th>
-                    <th className="col-price text-right internal-only">Собів. ($)</th>
-                    <th className="col-markup text-right">Націнка %</th>
-                    <th className="col-readonly text-right internal-only">Маржа ($)</th>
-                    <th style={{width: '50px'}}></th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {calculations.processedWorkItems.map(it => (
-                    <tr key={it.id}>
-                      <td><input type="text" className="equipment-name-input" value={it.name} onChange={(e) => updateList(workItems, setWorkItems, it.id, 'name', e.target.value)} placeholder="Назва роботи / витрати" /></td>
-                      <td><input type="number" className="text-right" value={it.quantity} onChange={(e) => updateList(workItems, setWorkItems, it.id, 'quantity', e.target.value)} /></td>
-                      <td className="col-currency">
-                        <select value={it.currency} onChange={(e) => updateList(workItems, setWorkItems, it.id, 'currency', e.target.value)}>
-                          <option value="USD">$</option><option value="EUR">€</option><option value="UAH">₴</option>
-                        </select>
-                      </td>
-                      <td><input type="number" className="text-right" value={it.price} onChange={(e) => updateList(workItems, setWorkItems, it.id, 'price', e.target.value)} /></td>
-                      <td className="text-right font-bold col-readonly">₴{formatMoney(it.priceUah)}</td>
-                      <td className="text-right font-bold text-blue col-readonly">${formatMoney(it.sumUsd)}</td>
-                      <td className="text-right font-bold text-blue col-readonly">₴{formatMoney(it.sumUah)}</td>
-                      <td className="internal-only"><input type="number" className="text-right" value={it.incomingPrice || 0} onChange={(e) => updateList(workItems, setWorkItems, it.id, 'incomingPrice', e.target.value)} /></td>
-                      <td><input type="number" className="text-right" value={roundMarkupForInput(it.markupPercent)} onChange={(e) => updateList(workItems, setWorkItems, it.id, 'markupPercent', e.target.value)} /></td>
-                      <td className="text-right font-bold text-yellow col-readonly internal-only">${formatMoney((it.sumUsd || 0) - (it.costUsd || 0))}</td>
-                      <td className="text-center"><button type="button" className="danger" onClick={() => removeItem(setWorkItems, it.id)}>✕</button></td>
-                    </tr>
-                  ))}
-                  <tr>
-                     <td>
-                       <div className="equipment-name-input" style={{display: 'flex', alignItems: 'center', minHeight: '42px'}}>Монтаж і пусконалагоджувальні роботи (% від вартості робіт)</div>
-                       {toNumber(installPercentTaxUsd, 0) > 0 && (
-                         <div style={{marginTop: '0.25rem', fontSize: '0.76rem', color: '#fbbf24'}}>
-                           + Податок: ${formatMoney(installPercentTaxUsd)} · Ціна: ${formatMoney(installPercentOnlyUsd)} → ${formatMoney(installPercentOnlyUsd + installPercentTaxUsd)}
-                         </div>
-                       )}
-                     </td>
-                     <td><input type="number" className="text-right" value={1} readOnly /></td>
-                     <td className="col-currency"><select value="USD" disabled><option value="USD">$</option></select></td>
-                     <td><input type="number" className="text-right" value={installPercentOnlyUsd + toNumber(installPercentTaxUsd, 0)} readOnly /></td>
-                     <td className="text-right font-bold col-readonly">₴{formatMoney((installPercentOnlyUsd + toNumber(installPercentTaxUsd, 0)) * toNumber(rates.usd, 0))}</td>
-                     <td className="text-right font-bold text-blue col-readonly">${formatMoney(installPercentOnlyUsd + toNumber(installPercentTaxUsd, 0))}</td>
-                     <td className="text-right font-bold text-blue col-readonly">₴{formatMoney((installPercentOnlyUsd + toNumber(installPercentTaxUsd, 0)) * toNumber(rates.usd, 0))}</td>
-                     <td className="internal-only"><input type="number" className="text-right" value={0} readOnly /></td>
-                     <td>
-                       <div className="flex items-center" style={{gap: '0.35rem'}}>
-                         <input type="number" className="text-right" value={installPercent} disabled={!autoInstallPercentEnabled} onChange={(e) => { setInstallPercent(parseNumberInput(e.target.value)); resetTaxDistributionState(); }} />
-                         <label style={{fontSize: '0.72rem', color: 'var(--text-muted)', whiteSpace: 'nowrap'}}>
-                           <input type="checkbox" checked={autoInstallPercentEnabled} onChange={(e) => { setAutoInstallPercentEnabled(e.target.checked); resetTaxDistributionState(); }} /> авто
-                         </label>
-                       </div>
-                     </td>
-                     <td className="text-right font-bold text-yellow col-readonly internal-only">${formatMoney(installPercentOnlyUsd + toNumber(installPercentTaxUsd, 0))}</td>
-                     <td></td>
-                  </tr>
-                  <tr className="group-summary-row">
-                     <td colSpan="6" className="text-right font-bold">Всього за монтажем та запуском:</td>
-                     <td className="text-right font-bold text-blue">${formatMoney(calculations.workItemsSumUsd)}</td>
-                     <td className="text-right font-bold text-blue">₴{formatMoney(calculations.workItemsSumUah)}</td>
-                     <td className="text-right font-bold internal-only">${formatMoney(calculations.workItemsCostUsd || 0)}</td>
-                     <td></td>
-                     <td className="text-right font-bold text-yellow internal-only">${formatMoney(calculations.workItemsMarginUsd || 0)}</td>
-                     <td></td>
-                  </tr>
-                </tbody>
-              </table>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {projectType === 'project' && (
-        <div className="card table-container" style={{padding: '0'}}>
+      {projectType !== 'product' && (
+        <div className="card table-container aux-table-container" style={{padding: '0'}}>
           <div className="flex justify-between items-center" style={{padding: '1.5rem', paddingBottom: '1rem'}}>
             <h2 style={{margin: 0}}>Монтажні роботи</h2>
             <button type="button" className="secondary" onClick={() => addItem(setWorkItems, "Новий вид робіт")}>+ Додати роботу</button>
@@ -3568,16 +3814,26 @@ function App() {
                   </tr>
                 ))}
                 <tr className="group-summary-row">
-                  <td colSpan="5" className="text-right font-bold">Всього за роботами:</td>
-                  <td className="text-right font-bold text-blue">${formatMoney(calculations.workItemsSumUsd + installPercentOnlyUsd + toNumber(installPercentTaxUsd, 0))}</td>
-                  <td className="text-right font-bold text-blue">₴{formatMoney((calculations.workItemsSumUsd + installPercentOnlyUsd + toNumber(installPercentTaxUsd, 0)) * toNumber(rates.usd, 0))}</td>
-                  <td className="text-right font-bold internal-only">${formatMoney(calculations.workItemsCostUsd || 0)}</td>
-                  <td colSpan="3" className="text-right font-bold text-yellow">
-                    <span style={{marginRight: '0.75rem'}}>${formatMoney((calculations.workItemsMarginUsd || 0) + installPercentOnlyUsd + toNumber(installPercentTaxUsd, 0))}</span>
-                    {toNumber((calculations.processedWorkItems || []).reduce((acc, item) => acc + toNumber(item.taxDistributedUsd, 0), 0) + toNumber(installPercentTaxUsd, 0), 0) > 0
-                      ? `Податок у розділі: $${formatMoney((calculations.processedWorkItems || []).reduce((acc, item) => acc + toNumber(item.taxDistributedUsd, 0), 0) + toNumber(installPercentTaxUsd, 0))}`
-                      : ''}
-                  </td>
+                  {clientMode ? (
+                    <>
+                      <td colSpan="5" className="text-right font-bold">Всього за роботами:</td>
+                      <td className="text-right font-bold text-blue">${formatMoney(calculations.workItemsSumUsd + installPercentOnlyUsd + toNumber(installPercentTaxUsd, 0))}</td>
+                      <td className="text-right font-bold text-blue">₴{formatMoney((calculations.workItemsSumUsd + installPercentOnlyUsd + toNumber(installPercentTaxUsd, 0)) * toNumber(rates.usd, 0))}</td>
+                    </>
+                  ) : (
+                    <>
+                      <td colSpan="5" className="text-right font-bold">Всього за роботами:</td>
+                      <td className="text-right font-bold text-blue">${formatMoney(calculations.workItemsSumUsd + installPercentOnlyUsd + toNumber(installPercentTaxUsd, 0))}</td>
+                      <td className="text-right font-bold text-blue">₴{formatMoney((calculations.workItemsSumUsd + installPercentOnlyUsd + toNumber(installPercentTaxUsd, 0)) * toNumber(rates.usd, 0))}</td>
+                      <td className="text-right font-bold internal-only">${formatMoney(calculations.workItemsCostUsd || 0)}</td>
+                      <td colSpan="3" className="text-right font-bold text-yellow">
+                        <span style={{marginRight: '0.75rem'}}>${formatMoney((calculations.workItemsMarginUsd || 0) + installPercentOnlyUsd + toNumber(installPercentTaxUsd, 0))}</span>
+                        {toNumber((calculations.processedWorkItems || []).reduce((acc, item) => acc + toNumber(item.taxDistributedUsd, 0), 0) + toNumber(installPercentTaxUsd, 0), 0) > 0
+                          ? `Податок у розділі: $${formatMoney((calculations.processedWorkItems || []).reduce((acc, item) => acc + toNumber(item.taxDistributedUsd, 0), 0) + toNumber(installPercentTaxUsd, 0))}`
+                          : ''}
+                      </td>
+                    </>
+                  )}
                 </tr>
               </tbody>
             </table>
@@ -3617,7 +3873,7 @@ function App() {
         </div>
       )}
 
-      <div className="card table-container" style={{padding: '0'}}>
+      <div className="card table-container aux-table-container" style={{padding: '0'}}>
         <div className="flex justify-between items-center" style={{padding: '1.5rem', paddingBottom: '1rem'}}>
           <h2 style={{margin: 0}}>Інші витрати (Логістика / ПММ)</h2>
           <button type="button" className="secondary" onClick={() => addItem(setOtherExpenses, "Нова витрата")}>+ Додати витрату</button>
@@ -3667,16 +3923,26 @@ function App() {
                 </tr>
               ))}
               <tr className="group-summary-row">
-                 <td colSpan="5" className="text-right font-bold">Всього за іншими витратами:</td>
-                 <td className="text-right font-bold text-blue">${formatMoney(calculations.otherCostsUsd)}</td>
-                 <td className="text-right font-bold text-blue">₴{formatMoney(calculations.otherCostsUah)}</td>
-                 <td className="text-right font-bold internal-only">${formatMoney(calculations.otherCostsCostUsd || 0)}</td>
-                 <td colSpan="3" className="text-right font-bold text-yellow">
-                   <span style={{marginRight: '0.75rem'}}>${formatMoney(calculations.otherCostsMarginUsd || 0)}</span>
-                   {toNumber((calculations.processedOtherExpenses || []).reduce((acc, item) => acc + toNumber(item.taxDistributedUsd, 0), 0), 0) > 0
-                     ? `Податок у розділі: $${formatMoney((calculations.processedOtherExpenses || []).reduce((acc, item) => acc + toNumber(item.taxDistributedUsd, 0), 0))}`
-                     : ''}
-                 </td>
+                 {clientMode ? (
+                   <>
+                     <td colSpan="5" className="text-right font-bold">Всього за іншими витратами:</td>
+                     <td className="text-right font-bold text-blue">${formatMoney(calculations.otherCostsUsd)}</td>
+                     <td className="text-right font-bold text-blue">₴{formatMoney(calculations.otherCostsUah)}</td>
+                   </>
+                 ) : (
+                   <>
+                     <td colSpan="5" className="text-right font-bold">Всього за іншими витратами:</td>
+                     <td className="text-right font-bold text-blue">${formatMoney(calculations.otherCostsUsd)}</td>
+                     <td className="text-right font-bold text-blue">₴{formatMoney(calculations.otherCostsUah)}</td>
+                     <td className="text-right font-bold internal-only">${formatMoney(calculations.otherCostsCostUsd || 0)}</td>
+                     <td colSpan="3" className="text-right font-bold text-yellow">
+                       <span style={{marginRight: '0.75rem'}}>${formatMoney(calculations.otherCostsMarginUsd || 0)}</span>
+                       {toNumber((calculations.processedOtherExpenses || []).reduce((acc, item) => acc + toNumber(item.taxDistributedUsd, 0), 0), 0) > 0
+                         ? `Податок у розділі: $${formatMoney((calculations.processedOtherExpenses || []).reduce((acc, item) => acc + toNumber(item.taxDistributedUsd, 0), 0))}`
+                         : ''}
+                     </td>
+                   </>
+                 )}
               </tr>
             </tbody>
           </table>
@@ -4073,17 +4339,21 @@ function App() {
 
       {printMode && (
         <div className="print-overlay">
-          <div className={`print-container ${printMode === 'offer' ? 'offer-print-container' : ''}`}>
+          <button type="button" className="secondary no-print print-overlay-close" onClick={() => setPrintMode(null)}>
+            Закрити
+          </button>
+          <div className={`print-container ${printMode === 'offer' ? 'offer-print-container' : ''} ${printMode === 'invoice' ? 'invoice-print-container' : ''}`}>
             {printMode === "offer" && (
-              <div className="offer-cover-page" style={{backgroundImage: "url(./title1.jpg)"}}>
-                <button className="secondary no-print offer-cover-close" onClick={() => setPrintMode(null)}>Закрити</button>
+              <div className="offer-cover-page">
+                <img className="offer-cover-image" src="./title1.jpg" alt="Обкладинка КП" />
                 <div className="offer-cover-content">
                   <div className="offer-cover-top">КОМЕРЦІЙНА ПРОПОЗИЦІЯ · {coverPageType} · {currentYear}</div>
                   <h1 className="offer-cover-title">{coverMainTitle}</h1>
                   <div className="offer-cover-subtitle">{coverSubtitle}</div>
                   <div className="offer-cover-address">📍 {coverAddress}</div>
+                  <div className="offer-cover-manager">Менеджер: {managerNameLabel}</div>
                   <div className="offer-cover-metrics">
-                    <div>Потужність: {coverPowerLine}</div>
+                    <div>{hasSolar ? "Сонячне поле" : "Потужність"}: {coverPowerLine}</div>
                     <div>Акумулятор: {coverBatteryLine}</div>
                     <div>Інвертор: {coverInverterLine}</div>
                     <div>Вартість: {formatMoney(calculations.sums.finalTotalWithDiscountUah)} грн</div>
@@ -4092,12 +4362,12 @@ function App() {
               </div>
             )}
             {printMode === 'offer' && <div className="offer-page-break"></div>}
-            <div className={printMode === 'invoice' ? 'invoice-print-header' : ''} style={{marginBottom: '1.5rem', color: '#000'}}>
+            <div className={printMode === 'offer' ? 'offer-proposal-sheet' : ''}>
+            <div className={printMode === 'invoice' ? 'invoice-print-header' : 'offer-print-header'} style={{marginBottom: '1.5rem', color: '#000'}}>
               {printMode === 'invoice' ? (
                 <>
                   <div style={{display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '1rem'}}>
                     <img src="./SolarLogo3.png" alt="Solar Service" style={{height: '88px', objectFit: 'contain'}} />
-                    <button className="secondary no-print" onClick={() => setPrintMode(null)}>Закрити</button>
                   </div>
                   <div className="invoice-orange-line"></div>
                   <h1 className="invoice-title">СПЕЦИФІКАЦІЯ ЗАМОВЛЕННЯ</h1>
@@ -4110,7 +4380,6 @@ function App() {
                     <h1 style={{color: '#000', margin: 0}}>Комерційна пропозиція</h1>
                     <p style={{color: '#666'}}>Дата: {new Date().toLocaleDateString('uk-UA')}</p>
                   </div>
-                  <button className="secondary no-print" onClick={() => setPrintMode(null)}>Закрити</button>
                 </div>
               )}
 
@@ -4119,6 +4388,31 @@ function App() {
                 <p><strong>Адреса:</strong> {clientInfo.address || "____________________"}</p>
               </div>
             </div>
+
+            {printMode === 'offer' && (
+              <div className="offer-top-grid">
+                <div className="offer-top-card">
+                  <h3>Технічні параметри</h3>
+                  <div className="offer-station-list">
+                    <div><span>Тип системи:</span><strong>{coverSystemNameFinal}</strong></div>
+                    <div><span>Потужність станції:</span><strong>{formatKw(toNumber(calculations.stationPowerW, 0) / 1000)} кВт</strong></div>
+                    <div><span>Потужність інвертора:</span><strong>{formatKw(inverterPowerKw)} кВт</strong></div>
+                    <div><span>Ємність АКБ:</span><strong>{formatKw(batteryKwh)} кВт·год</strong></div>
+                    {hasSolar && <div><span>Прогноз генерації/рік:</span><strong>{formatMoney(annualGenerationKwh).replace(',00', '')} кВт·год</strong></div>}
+                  </div>
+                </div>
+                <div className="offer-top-card">
+                  <h3>Гарантії та сервіс</h3>
+                  <div className="offer-station-list">
+                    <div><span>Сонячні модулі:</span><strong>до 15 років</strong></div>
+                    <div><span>Інвертор:</span><strong>до 5 років</strong></div>
+                    <div><span>Акумуляторні системи:</span><strong>до 10 років</strong></div>
+                    <div><span>Монтажні роботи:</span><strong>12 місяців</strong></div>
+                    <div><span>Сервісна підтримка:</span><strong>консультація та супровід</strong></div>
+                  </div>
+                </div>
+              </div>
+            )}
 
             <table className="print-table">
                <thead>
@@ -4205,11 +4499,118 @@ function App() {
                   </tr>
                </tfoot>
             </table>
-
-            <div style={{marginTop: '3rem', color: '#000', display: 'flex', justifyContent: 'space-between'}}>
-               <div>Здав: ___________________</div>
-               <div>Прийняв: ___________________</div>
+            {printMode === 'offer' && <OfferManagerBar />}
             </div>
+
+            {printMode === 'invoice' && (
+              <div style={{marginTop: '3rem', color: '#000', display: 'flex', justifyContent: 'space-between'}}>
+                 <div>Здав: ___________________</div>
+                 <div>Прийняв: ___________________</div>
+              </div>
+            )}
+
+            {printMode === 'offer' && showOfferStationSheet && (
+              <>
+                <div className="offer-page-break"></div>
+                <div className="offer-station-sheet offer-station-sheet-new-page">
+                  <div className="offer-station-title-row">
+                    <h2>Дані станції</h2>
+                  </div>
+                  <div className={`offer-insight-grid ${hasSolar ? '' : 'no-generation'}`} style={{marginTop: '0.65rem'}}>
+                    {hasSolar && (
+                      <div className="offer-gen-block">
+                        <h3>Генерація по місяцях</h3>
+                        <div className="offer-gen-tag">{formatMoney(annualGenerationKwh).replace(',00', '')} кВт•год / рік</div>
+                        <div className="offer-gen-meta">
+                          Орієнтовний середній показник для обраної області ({generationLocation}), не точний індивідуальний прогноз.
+                        </div>
+                        <div className="offer-bars offer-bars-with-axis">
+                          <div className="offer-axis">
+                            {(() => {
+                              const maxVal = Math.max(...monthlyGeneration, 1);
+                              const top = Math.ceil(maxVal / 25) * 25;
+                              const mid = Math.round(top / 2);
+                              return (
+                                <>
+                                  <span>{top}</span>
+                                  <span>{mid}</span>
+                                  <span>0</span>
+                                </>
+                              );
+                            })()}
+                          </div>
+                          {monthlyGeneration.map((val, idx) => {
+                            const maxVal = Math.max(...monthlyGeneration, 1);
+                            const h = Math.max(12, Math.round((val / maxVal) * 180));
+                            return (
+                              <div key={`st-m-${idx}`} className="offer-bar-item">
+                                <div className="offer-bar" style={{height: `${h}px`}}></div>
+                                <div className="offer-bar-label">{monthLabels[idx]}</div>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    )}
+
+                    <div className="offer-benefits-block">
+                      <h3>Як працює система</h3>
+                      <div className="offer-benefits-cards">
+                        {hasSolar && (
+                          <div className="offer-benefit-card orange">
+                            <div className="offer-benefit-title">День</div>
+                            <div className="offer-benefit-text">Панелі -> живлення об’єкта</div>
+                            <div className="offer-benefit-text">Надлишок -> заряд АКБ</div>
+                          </div>
+                        )}
+                        <div className="offer-benefit-card blue">
+                          <div className="offer-benefit-title">Ніч / Відключення</div>
+                          <div className="offer-benefit-text">АКБ -> живлення</div>
+                          <div className="offer-benefit-text">Автоматично, без перебоїв</div>
+                        </div>
+                        <div className="offer-benefit-card green">
+                          <div className="offer-benefit-title">Автономія</div>
+                          <div className="offer-benefit-text">Резерв критичних ліній</div>
+                        </div>
+                        <div className="offer-benefit-card navy">
+                          <div className="offer-benefit-title">Захист</div>
+                          <div className="offer-benefit-text">Швидкий автоперехід</div>
+                        </div>
+                        {hasSolar && (
+                          <div className="offer-benefit-card eco">
+                            <div className="offer-benefit-title">Екологія</div>
+                            <div className="offer-benefit-text">~{formatMoney((annualGenerationKwh * 0.48) / 1000).replace(',00', '')} т CO₂/рік менше</div>
+                          </div>
+                        )}
+                        <div className="offer-benefit-card warranty">
+                          <div className="offer-benefit-title">Гарантії</div>
+                          <div className="offer-benefit-text">15 / 10 / 5 років на обладнання</div>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                  <div className="offer-station-economics">
+                    <div className="offer-station-economics-card">
+                      <h3>Економіка та автономність</h3>
+                      <div className="offer-station-list">
+                        <div><span>Економія/рік:</span><strong>{hasSolar ? (formatMoney(annualSavingsUah) + " грн") : "—"}</strong></div>
+                        <div><span>Окупність:</span><strong>{hasSolar && paybackYears > 0 ? (formatKw(paybackYears) + " років") : "—"}</strong></div>
+                        <div><span>Автономність АКБ:</span><strong>{autonomyHours > 0 ? (formatKw(autonomyHours) + " год") : "—"}</strong></div>
+                        <div><span>Тариф:</span><strong>{formatKw(toNumber(energyTariffUah, 0))} грн/кВт·год</strong></div>
+                        <div><span>Типове навантаження:</span><strong>{formatKw(toNumber(typicalLoadKw, 0))} кВт</strong></div>
+                      </div>
+                    </div>
+                    {coverQrSrc && (
+                      <div className="offer-station-qr-card">
+                        <img src={coverQrSrc} alt="QR контакт" crossOrigin="anonymous" />
+                        <div>Скануй для зв’язку</div>
+                      </div>
+                    )}
+                  </div>
+                  <OfferManagerBar />
+                </div>
+              </>
+            )}
 
             <div className="no-print" style={{marginTop: '2rem', textAlign: 'center', display: 'flex', gap: '1rem', justifyContent: 'center'}}>
                <button onClick={() => window.print()} style={{background: '#0284c7', padding: '1rem 2rem'}}>🖨 Відкрити друк</button>
