@@ -293,7 +293,7 @@ async function exportToExcelFile({
     const installPercentUah = installPercentUsd * (usdRate > 0 ? usdRate : 1);
     if (installPercentUsd > 0) {
       workRows.push({
-        name: `Додатковий % за монтажні роботи (${installPercentValue}%)`,
+        name: 'Монтажні і пусконалагоджувальні роботи',
         unit: 'посл.',
         qty: 1,
         unitPriceUsd: installPercentUsd,
@@ -840,7 +840,7 @@ const isExpandableByType = (groupKey) => {
         sheet,
         rowNumber: currentRow,
         isOffer,
-        name: 'Монтажні роботи',
+        name: 'Монтажні і пусконалагоджувальні роботи',
         unit: 'посл.',
         qty: 1,
         priceUsd: installPercentUsd,

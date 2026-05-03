@@ -3987,7 +3987,7 @@ function App() {
                   
                   {toNumber(installPercent, 0) > 0 && (
                     <div className="flex justify-between py-1" style={{fontSize: '0.95rem', opacity: 0.9}}>
-                      <span>Монтаж та запуск ({toNumber(installPercent, 0)}%):</span>
+                      <span>Монтажні і пусконалагоджувальні роботи:</span>
                       <span className="font-bold">${formatMoney(calculations.sums.installPercentAmountUsd)}</span>
                     </div>
                   )}
