@@ -2582,7 +2582,7 @@ function App() {
   );
   const installPercentValue = toNumber(installPercent, 0);
   const installPercentBaseUsd = calculations.sums.materialsSumUsd;
-  const installPercentOnlyUsd = autoInstallPercentEnabled ? (installPercentBaseUsd * (installPercentValue / 100)) : 0;
+  const installPercentOnlyUsd = Math.max(0, toNumber(calculations.sums.installPercentAmountUsd, 0));
   const installPercentOnlyUah = installPercentOnlyUsd * toNumber(rates.usd, 0);
   const commercialServiceTotalUsd = calculations.workItemsSumUsd + calculations.otherCostsUsd + installPercentOnlyUsd;
   const commercialServicePercent = calculations.sums.materialsSumUsd > 0
