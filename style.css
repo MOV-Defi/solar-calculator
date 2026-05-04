@@ -553,7 +553,7 @@ button.danger:hover {
 
 .offer-print-header {
   border: 1px solid #c8ced8;
-  padding: 0.75rem 0.9rem;
+  padding: 0.6rem 0.6rem;
   margin-bottom: 0.8rem;
 }
 
@@ -619,7 +619,7 @@ button.danger:hover {
 .offer-top-grid {
   display: grid;
   grid-template-columns: 1fr 1fr;
-  gap: 0.55rem;
+  gap: 0.4rem;
   margin-bottom: 0.7rem;
 }
 
@@ -627,7 +627,7 @@ button.danger:hover {
   border: 1px solid #d5dbe6;
   border-radius: 14px;
   background: #f8fafc;
-  padding: 0.6rem 0.65rem;
+  padding: 0.5rem 0.5rem;
 }
 
 .offer-top-card h3 {
@@ -667,9 +667,9 @@ button.danger:hover {
 
 .offer-print-container .offer-proposal-sheet,
 .offer-print-container .offer-station-sheet-new-page {
-  padding: 10mm 8mm;
+  padding: 6mm 0;
   position: relative;
-  padding-bottom: 24mm;
+  padding-bottom: 14mm;
 }
 
 /* На екрані показуємо окремими листами з відступом */
@@ -709,32 +709,33 @@ button.danger:hover {
 
 .offer-print-container .print-table {
   width: 100%;
-  table-layout: auto;
+  table-layout: fixed;
   font-size: 10.8px;
 }
 
 .offer-print-container .print-table th:first-child,
 .offer-print-container .print-table td:first-child {
-  width: 3%;
+  width: 4% !important;
 }
 
 .offer-print-container .print-table th:nth-child(2),
 .offer-print-container .print-table td:nth-child(2) {
-  width: 55%;
+  width: 38% !important;
   min-width: 0;
-  word-break: break-word;
-  overflow-wrap: anywhere;
+  word-break: normal;
+  overflow-wrap: break-word;
   white-space: normal;
+  hyphens: auto;
 }
 
 .offer-print-container .print-table th:nth-child(3),
 .offer-print-container .print-table td:nth-child(3) {
-  width: 4%;
+  width: 6% !important;
 }
 
 .offer-print-container .print-table th:nth-child(4),
 .offer-print-container .print-table td:nth-child(4) {
-  width: 4%;
+  width: 6% !important;
 }
 
 .offer-print-container .print-table th:nth-child(5),
@@ -745,7 +746,7 @@ button.danger:hover {
 .offer-print-container .print-table td:nth-child(7),
 .offer-print-container .print-table th:nth-child(8),
 .offer-print-container .print-table td:nth-child(8) {
-  width: 6%;
+  width: 11.5% !important;
   white-space: nowrap;
 }
 
@@ -753,6 +754,20 @@ button.danger:hover {
 .offer-print-container .print-table td {
   padding: 6px 7px;
   line-height: 1.16;
+  overflow: hidden;
+}
+
+.offer-print-container .print-table th:nth-child(5),
+.offer-print-container .print-table td:nth-child(5),
+.offer-print-container .print-table th:nth-child(6),
+.offer-print-container .print-table td:nth-child(6),
+.offer-print-container .print-table th:nth-child(7),
+.offer-print-container .print-table td:nth-child(7),
+.offer-print-container .print-table th:nth-child(8),
+.offer-print-container .print-table td:nth-child(8) {
+  padding-left: 3px;
+  padding-right: 3px;
+  font-size: 1.02rem;
 }
 
 .offer-print-container .print-table th {
@@ -797,6 +812,12 @@ body.pdf-capture-offer .offer-station-sheet-new-page {
   min-height: 297mm !important;
   margin: 0 !important;
   box-shadow: none !important;
+}
+
+body.pdf-capture-offer .offer-proposal-sheet,
+body.pdf-capture-offer .offer-station-sheet-new-page {
+  padding-left: 0 !important;
+  padding-right: 0 !important;
 }
 
 body.pdf-capture-offer .offer-cover-page {
@@ -1129,13 +1150,30 @@ body.pdf-capture-offer .offer-station-list > div {
 }
 
 body.pdf-capture-offer .offer-print-container .print-table {
-  font-size: 9.3px !important;
+  font-size: 1.02rem !important;
 }
 
 body.pdf-capture-offer .offer-print-container .print-table th,
 body.pdf-capture-offer .offer-print-container .print-table td {
-  padding: 3px 4px !important;
+  padding: 4px 3px !important;
   line-height: 1.12 !important;
+}
+
+body.pdf-capture-offer .offer-print-container .print-table th:nth-child(5),
+body.pdf-capture-offer .offer-print-container .print-table td:nth-child(5),
+body.pdf-capture-offer .offer-print-container .print-table th:nth-child(6),
+body.pdf-capture-offer .offer-print-container .print-table td:nth-child(6),
+body.pdf-capture-offer .offer-print-container .print-table th:nth-child(7),
+body.pdf-capture-offer .offer-print-container .print-table td:nth-child(7),
+body.pdf-capture-offer .offer-print-container .print-table th:nth-child(8),
+body.pdf-capture-offer .offer-print-container .print-table td:nth-child(8) {
+  padding-left: 2px !important;
+  padding-right: 2px !important;
+  font-size: 1.02rem !important;
+}
+
+.offer-print-container .print-total-row td {
+  white-space: nowrap;
 }
 
 .invoice-print-container {
@@ -1442,13 +1480,26 @@ body.pdf-capture-invoice .invoice-print-container .print-total-row td {
 @media print {
   @page {
     size: A4 portrait;
-    margin: 8mm;
+    margin: 0;
   }
   body { padding: 0; background: white; }
   .container { display: none !important; }
   .no-print { display: none !important; }
   .print-overlay { position: static; background: transparent; padding: 0; }
   .print-container { margin: 0; width: 100%; box-shadow: none; }
+  .offer-print-container {
+    width: 210mm !important;
+    max-width: 210mm !important;
+    min-height: auto !important;
+    margin: 0 auto !important;
+    padding: 0 !important;
+  }
+  .offer-print-container .offer-cover-page,
+  .offer-print-container .offer-proposal-sheet,
+  .offer-print-container .offer-station-sheet-new-page {
+    width: 210mm !important;
+    max-width: 210mm !important;
+  }
   .invoice-print-container {
     width: 194mm;
     max-width: 194mm;
@@ -3101,6 +3152,39 @@ button.secondary:hover {
 .print-container .offer-cover-subtitle { color: rgba(236, 240, 246, 0.96) !important; }
 .print-container .offer-cover-address { color: #edf3ff !important; }
 .print-container .offer-cover-metrics { color: #e8edf6 !important; }
+
+/* Full-bleed PDF mode override (highest priority) */
+body.pdf-capture-offer,
+body.pdf-capture-offer html {
+  margin: 0 !important;
+  padding: 0 !important;
+}
+
+body.pdf-capture-offer .print-overlay,
+body.pdf-capture-offer .print-container,
+body.pdf-capture-offer .offer-print-container,
+body.pdf-capture-offer .offer-cover-page,
+body.pdf-capture-offer .offer-proposal-sheet,
+body.pdf-capture-offer .offer-station-sheet-new-page {
+  margin: 0 !important;
+  left: 0 !important;
+  right: 0 !important;
+}
+
+body.pdf-capture-offer .print-container,
+body.pdf-capture-offer .offer-print-container,
+body.pdf-capture-offer .offer-cover-page,
+body.pdf-capture-offer .offer-proposal-sheet,
+body.pdf-capture-offer .offer-station-sheet-new-page {
+  width: 210mm !important;
+  max-width: 210mm !important;
+}
+
+body.pdf-capture-offer .offer-proposal-sheet,
+body.pdf-capture-offer .offer-station-sheet-new-page {
+  padding-left: 0 !important;
+  padding-right: 0 !important;
+}
 
 /* Fix: dark theme readability for Montage/Expenses sum values */
 :root:not([data-theme="light"]) .table-container td.text-blue,

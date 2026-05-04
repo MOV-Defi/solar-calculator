@@ -149,6 +149,7 @@ const GENERATION_MOUNT_TYPES = {
 };
 const DEFAULT_OTHER_EXPENSES = [{ id: 1, name: "Транспорт / ПММ", quantity: 1, price: 100, currency: "USD", incomingPrice: 0, markupPercent: 0 }];
 const DEFAULT_WORK_ITEMS = [{ id: 1, name: "Монтажні та пусконалагоджувальні роботи", quantity: 1, price: 0, currency: "USD", incomingPrice: 0, markupPercent: 0 }];
+const DEFAULT_OFFER_SHEETS = [{ id: "offer_sheet_1", name: "КП 1", data: null, summary: null }];
 const DEFAULT_COMMERCIAL_WORK_ITEMS = [
   "Геологічні та геодезичні вишукування",
   "Розробка проектних рішень",
@@ -481,6 +482,14 @@ function App() {
   const [newProtectionType, setNewProtectionType] = useState("Захист PV");
   const [newProtectionCustomName, setNewProtectionCustomName] = useState("");
   const [mountingTemplateSelection, setMountingTemplateSelection] = useState(() => getSaved('solar_mountingTemplateSelection', {}));
+  const [offerSheets, setOfferSheets] = useState(() => {
+    const saved = getSaved('solar_offerSheets', DEFAULT_OFFER_SHEETS);
+    return Array.isArray(saved) && saved.length > 0 ? saved : DEFAULT_OFFER_SHEETS;
+  });
+  const [activeOfferSheetId, setActiveOfferSheetId] = useState(() => getSaved('solar_activeOfferSheetId', DEFAULT_OFFER_SHEETS[0].id));
+  const [showOfferComparisonSheet, setShowOfferComparisonSheet] = useState(false);
+  const [editingOfferSheetId, setEditingOfferSheetId] = useState('');
+  const isApplyingOfferSheetRef = useRef(false);
 
   // Reverse migration to fix the issue where all protection items were merged into one group
   // Aggressive repair logic removed to prevent data loss.
@@ -1140,6 +1149,106 @@ function App() {
     }
   };
 
+  const buildOfferSheetSnapshot = () => ({
+    rates,
+    modulePower,
+    clientInfo,
+    offerPurpose,
+    coverSystemName,
+    coverPageType,
+    showOfferStationSheet,
+    generationLocation,
+    generationMountType,
+    energyTariffUah,
+    typicalLoadKw,
+    coverQrUrl,
+    managerContacts,
+    selectedManagerId,
+    equipmentGroups,
+    otherExpenses,
+    workItems,
+    installPercent,
+    managerCommissionRate,
+    clientDiscountPercent,
+    taxMode,
+    fopTaxPercent,
+    advancedFopPercent,
+    advancedFopBaseMode,
+    advancedFopSelectedGroups,
+    advancedFopSelectedItems,
+    advancedFopGroupPercents,
+    advancedFopItemPercents,
+    lockedDistributedTaxUsd,
+    taxDistributionApplied,
+    taxDistributionScope,
+    installPercentTaxUsd,
+    autoInstallPercentEnabled,
+    groupSettings,
+    autoMountingQuantity,
+    projectType
+  });
+
+  const buildOfferSheetSummary = () => ({
+    stationPowerW: toNumber(calculations.stationPowerW, 0),
+    finalTotalWithDiscountUsd: toNumber(calculations.sums?.finalTotalWithDiscountUsd, 0),
+    finalTotalWithDiscountUah: toNumber(calculations.sums?.finalTotalWithDiscountUah, 0),
+    materialsSumUsd: toNumber(calculations.sums?.materialsSumUsd, 0),
+    worksTotalUsd: toNumber(calculations.workItemsSumUsd, 0) + toNumber(calculations.sums?.installPercentAmountUsd, 0),
+    otherCostsUsd: toNumber(calculations.otherCostsUsd, 0),
+    grossMarginBeforeTaxesUsd: toNumber(calculations.sums?.grossMarginBeforeTaxesUsd, 0),
+    taxesUsd: toNumber(calculations.sums?.taxesUsd, 0),
+    marginAfterTaxUsd: toNumber(calculations.sums?.marginAfterTaxUsd, 0),
+    managerCommissionAfterTaxesUsd: toNumber(calculations.sums?.managerCommissionAfterTaxesUsd, 0),
+    netProfitUsd: toNumber(calculations.sums?.netProfitUsd, 0)
+  });
+
+  const applyOfferSheetSnapshot = (data) => {
+    if (!data || typeof data !== 'object') return;
+    const loadedManagers = Array.isArray(data.managerContacts) && data.managerContacts.length > 0
+      ? data.managerContacts
+      : DEFAULT_MANAGER_CONTACTS;
+    setRates(data.rates && typeof data.rates === 'object' ? data.rates : DEFAULT_RATES);
+    setModulePower(data.modulePower ?? 550);
+    setClientInfo(data.clientInfo && typeof data.clientInfo === 'object' ? data.clientInfo : DEFAULT_CLIENT_INFO);
+    setOfferPurpose(typeof data.offerPurpose === 'string' ? data.offerPurpose : DEFAULT_OFFER_PURPOSE);
+    setCoverSystemName(typeof data.coverSystemName === 'string' ? data.coverSystemName : DEFAULT_COVER_SYSTEM_NAME);
+    setCoverPageType(typeof data.coverPageType === 'string' ? data.coverPageType : COVER_PAGE_TYPES[0]);
+    setShowOfferStationSheet(typeof data.showOfferStationSheet === 'boolean' ? data.showOfferStationSheet : false);
+    setGenerationLocation(typeof data.generationLocation === 'string' ? data.generationLocation : 'Миколаїв');
+    setGenerationMountType(typeof data.generationMountType === 'string' ? data.generationMountType : 'roof');
+    setEnergyTariffUah(data.energyTariffUah ?? 4.32);
+    setTypicalLoadKw(data.typicalLoadKw ?? 2);
+    setCoverQrUrl(typeof data.coverQrUrl === 'string' ? data.coverQrUrl : DEFAULT_QR_URL);
+    setManagerContacts(loadedManagers);
+    setSelectedManagerId(
+      typeof data.selectedManagerId === 'string' && loadedManagers.some((m) => m.id === data.selectedManagerId)
+        ? data.selectedManagerId
+        : loadedManagers[0].id
+    );
+    setEquipmentGroups(data.equipmentGroups && typeof data.equipmentGroups === 'object' ? data.equipmentGroups : createDefaultGroups());
+    setOtherExpenses(Array.isArray(data.otherExpenses) ? cloneList(data.otherExpenses) : cloneList(DEFAULT_OTHER_EXPENSES));
+    setWorkItems(Array.isArray(data.workItems) ? cloneList(data.workItems) : cloneList(DEFAULT_WORK_ITEMS));
+    setInstallPercent(data.installPercent ?? 15);
+    setManagerCommissionRate(data.managerCommissionRate ?? 10);
+    setClientDiscountPercent(data.clientDiscountPercent ?? 0);
+    setTaxMode(data.taxMode || 'none');
+    setFopTaxPercent(data.fopTaxPercent ?? 7);
+    setAdvancedFopPercent(data.advancedFopPercent ?? 7);
+    setAdvancedFopBaseMode(data.advancedFopBaseMode || 'all_goods');
+    setAdvancedFopSelectedGroups(Array.isArray(data.advancedFopSelectedGroups) ? data.advancedFopSelectedGroups : []);
+    setAdvancedFopSelectedItems(Array.isArray(data.advancedFopSelectedItems) ? data.advancedFopSelectedItems : []);
+    setAdvancedFopGroupPercents(data.advancedFopGroupPercents && typeof data.advancedFopGroupPercents === 'object' ? data.advancedFopGroupPercents : {});
+    setAdvancedFopItemPercents(data.advancedFopItemPercents && typeof data.advancedFopItemPercents === 'object' ? data.advancedFopItemPercents : {});
+    setLockedDistributedTaxUsd(data.lockedDistributedTaxUsd ?? null);
+    setTaxDistributionApplied(Boolean(data.taxDistributionApplied));
+    setTaxDistributionScope(data.taxDistributionScope || 'nonMainGoods');
+    setInstallPercentTaxUsd(data.installPercentTaxUsd ?? 0);
+    setAutoInstallPercentEnabled(typeof data.autoInstallPercentEnabled === 'boolean' ? data.autoInstallPercentEnabled : true);
+    setGroupSettings(data.groupSettings && typeof data.groupSettings === 'object' ? data.groupSettings : createDefaultGroupSettings());
+    setAutoMountingQuantity(typeof data.autoMountingQuantity === 'boolean' ? data.autoMountingQuantity : true);
+    setProjectType(data.projectType || 'commercial');
+  };
+
   const applyProjectData = (project) => {
     const data = project?.data || {};
     const loadedManagers = Array.isArray(data.managerContacts) && data.managerContacts.length > 0
@@ -1182,6 +1291,14 @@ function App() {
     if (data.equipmentGroups && typeof data.equipmentGroups === 'object') {
       rememberProjectCatalog(data.equipmentGroups);
     }
+    const loadedSheets = Array.isArray(data.offerSheets) && data.offerSheets.length > 0
+      ? data.offerSheets
+      : DEFAULT_OFFER_SHEETS;
+    const loadedActiveSheetId = typeof data.activeOfferSheetId === 'string'
+      ? data.activeOfferSheetId
+      : loadedSheets[0].id;
+    setOfferSheets(loadedSheets);
+    setActiveOfferSheetId(loadedActiveSheetId);
   };
 
   const applyTemplateData = (template) => {
@@ -1260,7 +1377,9 @@ function App() {
         taxMode,
         groupSettings,
         autoMountingQuantity,
-        projectFolderName: computedFolder
+        projectFolderName: computedFolder,
+        offerSheets,
+        activeOfferSheetId
       }
     };
 
@@ -1570,8 +1689,92 @@ function App() {
     setSelectedTemplateId("");
     setNewProtectionType("Захист PV");
     setNewProtectionCustomName("");
+    setOfferSheets(DEFAULT_OFFER_SHEETS);
+    setActiveOfferSheetId(DEFAULT_OFFER_SHEETS[0].id);
+    setShowOfferComparisonSheet(false);
     setPrintMode(null);
     setShowNewProjectDialog(false);
+  };
+
+  const persistCurrentSheetState = () => {
+    if (showOfferComparisonSheet || isApplyingOfferSheetRef.current) return;
+    const activeId = String(activeOfferSheetId || '');
+    if (!activeId) return;
+    const snapshot = buildOfferSheetSnapshot();
+    const summary = buildOfferSheetSummary();
+    setOfferSheets((prev) => {
+      const list = Array.isArray(prev) && prev.length > 0 ? prev : DEFAULT_OFFER_SHEETS;
+      return list.map((sheet) => (
+        String(sheet.id) === activeId
+          ? { ...sheet, data: snapshot, summary, updatedAt: new Date().toISOString() }
+          : sheet
+      ));
+    });
+  };
+
+  const switchOfferSheet = (id) => {
+    const targetId = String(id || '');
+    if (!targetId || targetId === String(activeOfferSheetId || '')) return;
+    persistCurrentSheetState();
+    const target = (offerSheets || []).find((sheet) => String(sheet.id) === targetId);
+    if (!target) return;
+    setShowOfferComparisonSheet(false);
+    setActiveOfferSheetId(targetId);
+    if (target.data) {
+      isApplyingOfferSheetRef.current = true;
+      applyOfferSheetSnapshot(target.data);
+      setTimeout(() => { isApplyingOfferSheetRef.current = false; }, 0);
+    }
+  };
+
+  const addOfferSheet = () => {
+    persistCurrentSheetState();
+    const maxIndex = (offerSheets || []).reduce((acc, sheet) => {
+      const match = String(sheet.name || '').match(/КП\s+(\d+)/i);
+      const idx = match ? toNumber(match[1], 0) : 0;
+      return Math.max(acc, idx);
+    }, 0);
+    const nextId = `offer_sheet_${Date.now()}`;
+    const nextSheet = {
+      id: nextId,
+      name: `КП ${maxIndex + 1}`,
+      data: buildOfferSheetSnapshot(),
+      summary: buildOfferSheetSummary(),
+      updatedAt: new Date().toISOString()
+    };
+    setOfferSheets((prev) => [...(Array.isArray(prev) ? prev : []), nextSheet]);
+    setActiveOfferSheetId(nextId);
+    setShowOfferComparisonSheet(false);
+  };
+
+  const removeOfferSheet = (id) => {
+    const targetId = String(id || '');
+    const list = Array.isArray(offerSheets) ? offerSheets : [];
+    if (list.length <= 1) {
+      alert('Має залишатися хоча б один лист КП.');
+      return;
+    }
+    if (!window.confirm('Видалити цей лист КП?')) return;
+    const next = list.filter((sheet) => String(sheet.id) !== targetId);
+    setOfferSheets(next);
+    if (String(activeOfferSheetId) === targetId) {
+      const fallback = next[0];
+      setActiveOfferSheetId(fallback.id);
+      if (fallback?.data) {
+        isApplyingOfferSheetRef.current = true;
+        applyOfferSheetSnapshot(fallback.data);
+        setTimeout(() => { isApplyingOfferSheetRef.current = false; }, 0);
+      }
+    }
+  };
+
+  const renameOfferSheet = (id, name) => {
+    const targetId = String(id || '');
+    const nextName = String(name || '').trim();
+    if (!targetId || !nextName) return;
+    setOfferSheets((prev) => (Array.isArray(prev) ? prev : []).map((sheet) => (
+      String(sheet.id) === targetId ? { ...sheet, name: nextName } : sheet
+    )));
   };
 
   const exportToExcel = async (mode = 'offer', detailLevel = 'summary') => {
@@ -1596,6 +1799,33 @@ function App() {
     } catch (err) {
       console.error('Export trigger error', err);
       alert('Помилка запуску експорту Excel. Перевірте консоль браузера.');
+    }
+  };
+
+  const exportAllOffersToExcel = async () => {
+    try {
+      persistCurrentSheetState();
+      const sheets = (Array.isArray(offerSheets) ? offerSheets : []).map((sheet) => (
+        String(sheet.id) === String(activeOfferSheetId)
+          ? {
+              ...sheet,
+              data: buildOfferSheetSnapshot(),
+              summary: buildOfferSheetSummary(),
+              updatedAt: new Date().toISOString()
+            }
+          : sheet
+      ));
+      await exportAllOffersToExcelFile({
+        offerSheets: sheets,
+        activeOfferSheetId,
+        clientInfo,
+        calculations,
+        workspaceHandle,
+        projectFolderName
+      });
+    } catch (err) {
+      console.error('Export all offers trigger error', err);
+      alert('Помилка запуску експорту Excel (всі КП). Перевірте консоль браузера.');
     }
   };
 
@@ -2240,6 +2470,16 @@ function App() {
   useEffect(() => { localStorage.setItem('solar_groupSettings', JSON.stringify(groupSettings)); }, [groupSettings]);
   useEffect(() => { localStorage.setItem('solar_project_catalog_snapshots', JSON.stringify(projectCatalogSnapshots)); }, [projectCatalogSnapshots]);
   useEffect(() => { localStorage.setItem('solar_mountingTemplateSelection', JSON.stringify(mountingTemplateSelection)); }, [mountingTemplateSelection]);
+  useEffect(() => { localStorage.setItem('solar_offerSheets', JSON.stringify(offerSheets)); }, [offerSheets]);
+  useEffect(() => { localStorage.setItem('solar_activeOfferSheetId', JSON.stringify(activeOfferSheetId)); }, [activeOfferSheetId]);
+
+  useEffect(() => {
+    if (!activeOfferSheetId || !Array.isArray(offerSheets) || offerSheets.length === 0) return;
+    const hasActive = offerSheets.some((sheet) => String(sheet.id) === String(activeOfferSheetId));
+    if (!hasActive) {
+      setActiveOfferSheetId(String(offerSheets[0].id));
+    }
+  }, [offerSheets, activeOfferSheetId]);
   useEffect(() => {
     const nodes = document.querySelectorAll('.top-shell [data-title]');
     nodes.forEach((el) => {
@@ -2576,6 +2816,52 @@ function App() {
     advancedFopItemPercents
   ]);
 
+  useEffect(() => {
+    persistCurrentSheetState();
+  }, [
+    activeOfferSheetId,
+    showOfferComparisonSheet,
+    rates,
+    modulePower,
+    clientInfo,
+    offerPurpose,
+    coverSystemName,
+    coverPageType,
+    showOfferStationSheet,
+    generationLocation,
+    generationMountType,
+    energyTariffUah,
+    typicalLoadKw,
+    coverQrUrl,
+    managerContacts,
+    selectedManagerId,
+    equipmentGroups,
+    otherExpenses,
+    workItems,
+    installPercent,
+    managerCommissionRate,
+    clientDiscountPercent,
+    taxMode,
+    fopTaxPercent,
+    advancedFopPercent,
+    advancedFopBaseMode,
+    advancedFopSelectedGroups,
+    advancedFopSelectedItems,
+    advancedFopGroupPercents,
+    advancedFopItemPercents,
+    lockedDistributedTaxUsd,
+    taxDistributionApplied,
+    taxDistributionScope,
+    installPercentTaxUsd,
+    autoInstallPercentEnabled,
+    groupSettings,
+    autoMountingQuantity,
+    projectType,
+    calculations.sums.finalTotalWithDiscountUsd,
+    calculations.sums.finalTotalWithDiscountUah,
+    calculations.stationPowerW
+  ]);
+
   const protectionGroups = useMemo(
     () => Object.keys(calculations.groups).filter(groupKey => groupKey.startsWith("Захист") && groupKey !== "Захист"),
     [calculations.groups]
@@ -2609,8 +2895,40 @@ function App() {
     calculations.processedWorkItems,
     projectType === 'commercial' ? 'Монтаж, запуск та супровід:' : 'Монтажні та пусконалагоджувальні роботи:'
   );
+  const offerSheetsForUi = (Array.isArray(offerSheets) && offerSheets.length > 0) ? offerSheets : DEFAULT_OFFER_SHEETS;
+  const offerComparisonRows = offerSheetsForUi.map((sheet) => {
+    const isActive = String(sheet.id) === String(activeOfferSheetId);
+    const summary = isActive
+      ? buildOfferSheetSummary()
+      : (sheet.summary || {});
+    return {
+      id: sheet.id,
+      name: sheet.name || 'КП',
+      stationPowerW: toNumber(summary.stationPowerW, 0),
+      finalTotalWithDiscountUsd: toNumber(summary.finalTotalWithDiscountUsd, 0),
+      finalTotalWithDiscountUah: toNumber(summary.finalTotalWithDiscountUah, 0),
+      materialsSumUsd: toNumber(summary.materialsSumUsd, 0),
+      worksTotalUsd: toNumber(summary.worksTotalUsd, 0),
+      otherCostsUsd: toNumber(summary.otherCostsUsd, 0),
+      grossMarginBeforeTaxesUsd: toNumber(summary.grossMarginBeforeTaxesUsd, 0),
+      taxesUsd: toNumber(summary.taxesUsd, 0),
+      marginAfterTaxUsd: toNumber(summary.marginAfterTaxUsd, 0),
+      managerCommissionAfterTaxesUsd: toNumber(summary.managerCommissionAfterTaxesUsd, 0),
+      netProfitUsd: toNumber(summary.netProfitUsd, 0)
+    };
+  });
 
   const currentYear = new Date().getFullYear();
+  const splitMoneyParts = (value) => {
+    const formatted = formatMoney(value);
+    const parts = String(formatted).split(',');
+    return {
+      whole: parts[0] || '0',
+      frac: (parts[1] || '00').padEnd(2, '0').slice(0, 2)
+    };
+  };
+  const totalUsdParts = splitMoneyParts(calculations.sums.finalTotalWithDiscountUsd);
+  const totalUahParts = splitMoneyParts(calculations.sums.finalTotalWithDiscountUah);
   const solarPowerKw = toNumber(calculations.stationPowerW, 0) / 1000;
   const allRows = Object.values(calculations.groups).flat();
   const inverterRows = allRows.filter((row) => row && String(row.type || "").trim() === "Інвертор");
@@ -2643,7 +2961,7 @@ function App() {
   const coverPowerLine = coverPowerKnown ? (formatKw(coverMainPowerKw) + " кВт") : "—";
   const coverBatteryLine = batteryKwh > 0 ? (formatKw(batteryKwh) + " кВт·год") : (hasBattery ? (batteryRows.reduce((acc, row) => acc + toNumber(row.quantity, 0), 0) + " шт.") : "—");
   const coverInverterLine = hasInverter
-    ? ((inverterPowerKw > 0 ? (formatKw(inverterPowerKw) + " кВт") : "—") + (inverterTotalUah > 0 ? (" · " + formatMoney(inverterTotalUah) + " грн") : ""))
+    ? (inverterPowerKw > 0 ? (formatKw(inverterPowerKw) + " кВт") : "—")
     : "—";
   const coverSubtitle = (offerPurpose || DEFAULT_OFFER_PURPOSE).trim() || DEFAULT_OFFER_PURPOSE;
   const generationProfileKey = GENERATION_CITY_TO_PROFILE[generationLocation] || "south";
@@ -3039,6 +3357,7 @@ function App() {
               <option value="sidebar">Бокове меню</option>
             </select>
             <button type="button" className="secondary menu-action-btn" data-cat="export" style={{background: "#059669"}} onClick={() => exportToExcel("offer", "summary")} data-title="Excel (зведено)"><MenuBtnLabel icon="📊" label="Excel (зведено)" /></button>
+            <button type="button" className="secondary menu-action-btn" data-cat="export" style={{background: "#0b8f6a"}} onClick={exportAllOffersToExcel} data-title="Excel (всі КП)"><MenuBtnLabel icon="🗂️" label="Excel (всі КП)" /></button>
             <button type="button" className="secondary menu-action-btn" data-cat="export" style={{background: "#0f766e"}} onClick={() => exportToExcel("offer", "full")} data-title="Excel (повна)"><MenuBtnLabel icon="📗" label="Excel (повна)" /></button>
             <button type="button" className="secondary menu-action-btn" data-cat="print" style={{background: '#7c3aed'}} onClick={() => setPrintMode('offer')} data-title="КП"><MenuBtnLabel icon="📄" label="КП" /></button>
             <button type="button" className="secondary menu-action-btn" data-cat="print" style={{background: '#3b82f6'}} onClick={() => setPrintMode('invoice')} data-title="Накладна"><MenuBtnLabel icon="🧾" label="Накладна" /></button>
@@ -3211,7 +3530,65 @@ function App() {
       </div>
 
       <div className="card table-container aux-table-container" style={{padding: '0'}}>
-        {projectType !== 'product' && (
+        <div style={{padding: '0.75rem 1rem', borderBottom: '1px solid var(--border-color)', display: 'flex', gap: '0.45rem', flexWrap: 'wrap', alignItems: 'center'}}>
+          {offerSheetsForUi.map((sheet) => {
+            const active = !showOfferComparisonSheet && String(activeOfferSheetId) === String(sheet.id);
+            return (
+              <div key={sheet.id} style={{display: 'flex', alignItems: 'center', gap: '0.25rem'}}>
+                {String(editingOfferSheetId) === String(sheet.id) ? (
+                  <input
+                    type="text"
+                    autoFocus
+                    defaultValue={sheet.name || 'КП'}
+                    onBlur={(e) => { renameOfferSheet(sheet.id, e.target.value); setEditingOfferSheetId(''); }}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter') { renameOfferSheet(sheet.id, e.currentTarget.value); setEditingOfferSheetId(''); }
+                      if (e.key === 'Escape') setEditingOfferSheetId('');
+                    }}
+                    style={{width: '130px', padding: '0.35rem 0.5rem'}}
+                  />
+                ) : (
+                  <button
+                    type="button"
+                    className="secondary"
+                    onClick={() => switchOfferSheet(sheet.id)}
+                    onDoubleClick={() => setEditingOfferSheetId(String(sheet.id))}
+                    style={{background: active ? '#0f766e' : '#1d4e89', padding: '0.35rem 0.7rem', fontWeight: 700}}
+                    title="Подвійний клік для перейменування"
+                  >
+                    {sheet.name || 'КП'}
+                  </button>
+                )}
+                {offerSheetsForUi.length > 1 && (
+                  <button
+                    type="button"
+                    className="danger"
+                    onClick={() => removeOfferSheet(sheet.id)}
+                    style={{padding: '0.25rem 0.45rem', minWidth: 'auto'}}
+                    title="Видалити лист КП"
+                  >
+                    ✕
+                  </button>
+                )}
+              </div>
+            );
+          })}
+          <button type="button" className="secondary" onClick={addOfferSheet} style={{background: '#0284c7', padding: '0.35rem 0.75rem'}}>
+            + КП
+          </button>
+          <button
+            type="button"
+            className="secondary"
+            onClick={() => {
+              persistCurrentSheetState();
+              setShowOfferComparisonSheet(true);
+            }}
+            style={{background: showOfferComparisonSheet ? '#f59e0b' : '#1d4e89', padding: '0.35rem 0.75rem', fontWeight: 700}}
+          >
+            Порівняльний лист
+          </button>
+        </div>
+        {!showOfferComparisonSheet && projectType !== 'product' && (
           <div className="flex justify-between items-center" style={{padding: '0.75rem 1rem', borderBottom: '1px solid var(--border-color)', gap: '0.75rem', flexWrap: 'wrap'}}>
             <div style={{fontWeight: 700, color: 'var(--text-muted)', fontSize: '0.9rem'}}>Категорії</div>
             <div className="flex items-center" style={{gap: '0.5rem', flexWrap: 'wrap'}}>
@@ -3227,6 +3604,45 @@ function App() {
             </div>
           </div>
         )}
+        {showOfferComparisonSheet ? (
+          <div style={{padding: '0.9rem'}}>
+            <h3 style={{margin: '0 0 0.8rem 0'}}>Порівняльний лист КП</h3>
+            <table>
+              <thead>
+                <tr>
+                  <th>Лист КП</th>
+                  <th className="text-right">Обладнання, $</th>
+                  <th className="text-right">Роботи, $</th>
+                  <th className="text-right">Дод. витрати, $</th>
+                  <th className="text-right">Разом, $</th>
+                  <th className="text-right">Разом, грн</th>
+                  <th className="text-right">Маржа брудна, $</th>
+                  <th className="text-right">Податки, $</th>
+                  <th className="text-right">Маржа після под., $</th>
+                  <th className="text-right">Маржа менеджера, $</th>
+                  <th className="text-right">Маржа чиста, $</th>
+                </tr>
+              </thead>
+              <tbody>
+                {offerComparisonRows.map((row) => (
+                  <tr key={`cmp-${row.id}`}>
+                    <td style={{fontWeight: 700}}>{row.name}</td>
+                    <td className="text-right">${formatMoney(row.materialsSumUsd)}</td>
+                    <td className="text-right">${formatMoney(row.worksTotalUsd)}</td>
+                    <td className="text-right">${formatMoney(row.otherCostsUsd)}</td>
+                    <td className="text-right">${formatMoney(row.finalTotalWithDiscountUsd)}</td>
+                    <td className="text-right">₴{formatMoney(row.finalTotalWithDiscountUah)}</td>
+                    <td className="text-right">${formatMoney(row.grossMarginBeforeTaxesUsd)}</td>
+                    <td className="text-right">${formatMoney(row.taxesUsd)}</td>
+                    <td className="text-right">${formatMoney(row.marginAfterTaxUsd)}</td>
+                    <td className="text-right">${formatMoney(row.managerCommissionAfterTaxesUsd)}</td>
+                    <td className="text-right">${formatMoney(row.netProfitUsd)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        ) : (
         <table>
           {(() => {
             const allSections = ["Основне обладнання", "ЗАХИСТ", "Кріплення", "Кабельна продукція", "Заземлення", "Інші групи"];
@@ -3761,6 +4177,7 @@ function App() {
             ));
           })}
         </table>
+        )}
       </div>
 
       {projectType !== 'product' && (
@@ -4414,17 +4831,27 @@ function App() {
               </div>
             )}
 
-            <table className="print-table">
+            <table className="print-table" style={{tableLayout: 'fixed', width: '100%'}}>
+               <colgroup>
+                  <col style={{width: '4%'}} />
+                  <col style={{width: '38%'}} />
+                  <col style={{width: '6%'}} />
+                  <col style={{width: '6%'}} />
+                  <col style={{width: '10%'}} />
+                  <col style={{width: '10%'}} />
+                  <col style={{width: '13%'}} />
+                  <col style={{width: '13%'}} />
+               </colgroup>
                <thead>
                   <tr>
                      <th>№</th>
                      <th>Найменування товару / послуги</th>
                      <th>Од.</th>
                      <th>Кіл-ть</th>
-                     <th>Ціна, $</th>
-                     <th>Ціна, грн</th>
-                     <th>Сума, $</th>
-                     <th>Сума, грн</th>
+                     <th style={{fontSize: '0.8rem'}}>Ціна, $</th>
+                     <th style={{fontSize: '0.8rem'}}>Ціна, грн</th>
+                     <th style={{fontSize: '0.8rem'}}>Сума, $</th>
+                     <th style={{fontSize: '0.8rem'}}>Сума, грн</th>
                   </tr>
                </thead>
                <tbody>
@@ -4477,25 +4904,42 @@ function App() {
                         });
                      });
 
+                     if (toNumber(calculations.sums.installPercentAmountUsd, 0) > 0) {
+                        rows.push({
+                           key: 'install-percent-work',
+                           name: 'Монтажні і пусконалагоджувальні роботи',
+                           unit: 'посл.',
+                           qty: 1,
+                           unitPriceUsd: toNumber(calculations.sums.installPercentAmountUsd, 0),
+                           priceUah: toNumber(calculations.sums.installPercentAmountUsd, 0) * toNumber(rates.usd, 0),
+                           sumUsd: toNumber(calculations.sums.installPercentAmountUsd, 0),
+                           sumUah: toNumber(calculations.sums.installPercentAmountUsd, 0) * toNumber(rates.usd, 0)
+                        });
+                     }
+
                      return rows.map((row, idx) => (
                         <tr key={row.key} className={idx % 2 === 1 ? 'print-alt-row' : ''}>
-                           <td className="text-right">{idx + 1}</td>
-                           <td>{row.name}</td>
-                           <td>{row.unit}</td>
-                           <td className="text-right">{row.qty}</td>
-                           <td className="text-right">{formatMoney(row.unitPriceUsd)}</td>
-                           <td className="text-right">{formatMoney(row.priceUah)}</td>
-                           <td className="text-right">{formatMoney(row.sumUsd)}</td>
-                           <td className="text-right">{formatMoney(row.sumUah)}</td>
+                           <td className="text-right" style={{whiteSpace: 'nowrap', fontSize: '1.02rem'}}>{idx + 1}</td>
+                           <td style={{wordBreak: 'break-word', overflowWrap: 'break-word'}}>{row.name}</td>
+                           <td style={{textAlign: 'center', whiteSpace: 'nowrap', fontSize: '1.02rem'}}>{row.unit}</td>
+                           <td className="text-right" style={{whiteSpace: 'nowrap', fontSize: '1.02rem'}}>{row.qty}</td>
+                           <td className="text-right" style={{whiteSpace: 'nowrap', fontSize: '1rem'}}>{formatMoney(row.unitPriceUsd)}</td>
+                           <td className="text-right" style={{whiteSpace: 'nowrap', fontSize: '1rem'}}>{formatMoney(row.priceUah)}</td>
+                           <td className="text-right" style={{whiteSpace: 'nowrap', fontSize: '1rem'}}>{formatMoney(row.sumUsd)}</td>
+                           <td className="text-right" style={{whiteSpace: 'nowrap', fontSize: '1rem'}}>{formatMoney(row.sumUah)}</td>
                         </tr>
                      ));
                   })()}
                </tbody>
                <tfoot>
                   <tr className="print-total-row">
-                     <td colSpan="6" className="text-right" style={{fontWeight: 'bold', fontSize: '1.1rem'}}>ЗАГАЛОМ ДО СПЛАТИ:</td>
-                     <td className="text-right" style={{fontWeight: 'bold', fontSize: '1.1rem'}}>${formatMoney(calculations.sums.finalTotalWithDiscountUsd)}</td>
-                     <td className="text-right" style={{fontWeight: 'bold', fontSize: '1.1rem'}}>{formatMoney(calculations.sums.finalTotalWithDiscountUah)} грн</td>
+                     <td colSpan="4" className="text-right" style={{fontWeight: 'bold', fontSize: '1.1rem'}}>ЗАГАЛОМ ДО СПЛАТИ:</td>
+                     <td colSpan="2" className="text-right" style={{fontWeight: 'bold', fontSize: '1.05rem', whiteSpace: 'nowrap', lineHeight: 1.1}}>
+                        ${totalUsdParts.whole},{totalUsdParts.frac}
+                     </td>
+                     <td colSpan="2" className="text-right" style={{fontWeight: 'bold', fontSize: '1.05rem', whiteSpace: 'nowrap', lineHeight: 1.1}}>
+                        {totalUahParts.whole},{totalUahParts.frac} грн
+                     </td>
                   </tr>
                </tfoot>
             </table>

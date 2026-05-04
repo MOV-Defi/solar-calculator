@@ -149,19 +149,28 @@ async function exportToExcelFile({
   workspaceHandle,
   projectFolderName,
   groupSettings = {},
-  detailLevel = 'summary'
+  detailLevel = 'summary',
+  workbookOverride = null,
+  sheetNameOverride = ''
 }) {
   try {
     const isOffer = mode === 'offer';
     const isFullSpec = detailLevel === 'full';
-    const orderedGroupKeys = buildExportGroupOrder(calculations?.groups || {});
+    const safeGroups = (calculations?.groups && typeof calculations.groups === 'object') ? calculations.groups : {};
+    const safeGroupTotalsUsd = (calculations?.groupTotalsUsd && typeof calculations.groupTotalsUsd === 'object') ? calculations.groupTotalsUsd : {};
+    const safeGroupTotalsUah = (calculations?.groupTotalsUah && typeof calculations.groupTotalsUah === 'object') ? calculations.groupTotalsUah : {};
+    const safeProcessedWorkItems = Array.isArray(calculations?.processedWorkItems) ? calculations.processedWorkItems : [];
+    const safeProcessedOtherExpenses = Array.isArray(calculations?.processedOtherExpenses) ? calculations.processedOtherExpenses : [];
+    const orderedGroupKeys = buildExportGroupOrder(safeGroups);
 
     if (typeof window.ExcelJS === 'undefined') {
       throw new Error('Бібліотека ExcelJS не завантажена. Спробуйте оновити сторінку.');
     }
 
-    const workbook = new window.ExcelJS.Workbook();
-    const sheet = workbook.addWorksheet(isOffer ? 'КП' : 'Накладна');
+    const workbook = workbookOverride || new window.ExcelJS.Workbook();
+    const sheet = workbook.addWorksheet(
+      String(sheetNameOverride || (isOffer ? 'КП' : 'Накладна')).slice(0, 31)
+    );
 
     if (!isOffer) {
       // Налаштування ширини колонок
@@ -235,7 +244,7 @@ async function exportToExcelFile({
 
     const goodsRows = [];
     orderedGroupKeys.forEach((groupKey) => {
-      const items = Array.isArray(calculations.groups[groupKey]) ? calculations.groups[groupKey] : [];
+      const items = Array.isArray(safeGroups[groupKey]) ? safeGroups[groupKey] : [];
       items.forEach((item) => {
         const name = (item?.name || '').trim();
         const qty = toNumber(item?.quantity, 0);
@@ -259,7 +268,7 @@ async function exportToExcelFile({
     });
 
     const workRows = [];
-    (calculations.processedWorkItems || []).forEach((it) => {
+    safeProcessedWorkItems.forEach((it) => {
       const qty = toNumber(it?.quantity, 0);
       if (!it?.name || qty <= 0) return;
       workRows.push({
@@ -273,7 +282,7 @@ async function exportToExcelFile({
       });
     });
 
-    (calculations.processedOtherExpenses || []).forEach((it) => {
+    safeProcessedOtherExpenses.forEach((it) => {
       const qty = toNumber(it?.quantity, 0);
       if (!it?.name || qty <= 0) return;
       workRows.push({
@@ -583,9 +592,9 @@ const isExpandableByType = (groupKey) => {
 };
 
   orderedGroupKeys.forEach((groupKey) => {
-    const items = Array.isArray(calculations.groups[groupKey]) ? calculations.groups[groupKey] : [];
-    const totalUsd = toNumber(calculations.groupTotalsUsd[groupKey], 0);
-    const totalUah = toNumber(calculations.groupTotalsUah[groupKey], 0);
+    const items = Array.isArray(safeGroups[groupKey]) ? safeGroups[groupKey] : [];
+    const totalUsd = toNumber(safeGroupTotalsUsd[groupKey], 0);
+    const totalUah = toNumber(safeGroupTotalsUah[groupKey], 0);
     const totalCostUsd = items.reduce((acc, it) => acc + toNumber(it?.costUsd, 0), 0);
 
     const settings = groupSettings[groupKey] || {};
@@ -763,7 +772,7 @@ const isExpandableByType = (groupKey) => {
   // Деталізована логістика / інші витрати (кожна позиція окремим рядком)
   addSectionHeader('Транспорт / Логістика');
   const logisticsStartRow = currentRow;
-  (calculations.processedOtherExpenses || []).forEach((item) => {
+  safeProcessedOtherExpenses.forEach((item) => {
     const name = (item?.name || '').trim();
     const qty = toNumber(item?.quantity, 0);
     if (!name || qty <= 0) return;
@@ -812,7 +821,7 @@ const isExpandableByType = (groupKey) => {
   if (hasWorks) {
     addSectionHeader('Монтажні та пусконалагоджувальні роботи');
     const worksStartRow = currentRow;
-    (calculations.processedWorkItems || []).forEach((item) => {
+    safeProcessedWorkItems.forEach((item) => {
       const name = (item?.name || '').trim();
       const qty = toNumber(item?.quantity, 0);
       if (!name || qty <= 0) return;
@@ -1152,21 +1161,25 @@ const isExpandableByType = (groupKey) => {
     sheet.getRow(currentRow).font = { italic: true };
   }
 
-  const outBuffer = await workbook.xlsx.writeBuffer();
-  const outBlob = new Blob([outBuffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
-  const outBaseDocName = buildDocumentBaseName(clientInfo, calculations.stationPowerW);
-  const suffix = isFullSpec ? '_Повна_специфікація' : '_Зведено';
-  const outFileName = isOffer ? `${outBaseDocName}_КП${suffix}.xlsx` : `${outBaseDocName}_Накладна${suffix}.xlsx`;
+    if (!workbookOverride) {
+      const outBuffer = await workbook.xlsx.writeBuffer();
+      const outBlob = new Blob([outBuffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+      const outBaseDocName = buildDocumentBaseName(clientInfo, calculations.stationPowerW);
+      const suffix = isFullSpec ? '_Повна_специфікація' : '_Зведено';
+      const outFileName = isOffer ? `${outBaseDocName}_КП${suffix}.xlsx` : `${outBaseDocName}_Накладна${suffix}.xlsx`;
 
-    await saveToDiskUtility(
-      workspaceHandle,
-      clientInfo,
-      calculations,
-      outFileName,
-      outBlob,
-      isOffer ? 'Excel КП' : 'Excel Накладна',
-      projectFolderName
-    );
+      await saveToDiskUtility(
+        workspaceHandle,
+        clientInfo,
+        calculations,
+        outFileName,
+        outBlob,
+        isOffer ? 'Excel КП' : 'Excel Накладна',
+        projectFolderName
+      );
+    }
+
+    return workbook;
   } catch (err) {
     console.error('Excel Export Error:', err);
     alert(`Помилка при створенні Excel: ${err.message}`);
@@ -1174,3 +1187,167 @@ const isExpandableByType = (groupKey) => {
 }
 
 window.exportToExcelFile = exportToExcelFile;
+
+const toSheetName = (value = '', fallback = 'КП') => {
+  const cleaned = String(value || fallback).replace(/[\[\]\*\/\\\?\:]/g, ' ').trim();
+  const safe = cleaned || fallback;
+  return safe.slice(0, 31);
+};
+
+const addComparisonSheet = (workbook, rows = []) => {
+  const sheet = workbook.addWorksheet('Порівняльний лист');
+  const headers = [
+    'КП',
+    'Сума за обладнання, $',
+    'Сума за роботи, $',
+    'Інші витрати, $',
+    'Загальна вартість обʼєкту, $',
+    'Маржа грязна, $',
+    'Податки, $',
+    'Маржа менеджера, $',
+    'Маржа чиста, $'
+  ];
+
+  sheet.columns = [
+    { width: 24 },
+    { width: 20 },
+    { width: 18 },
+    { width: 16 },
+    { width: 24 },
+    { width: 16 },
+    { width: 14 },
+    { width: 18 },
+    { width: 16 }
+  ];
+
+  const headerRow = sheet.addRow(headers);
+  headerRow.eachCell((cell) => {
+    cell.font = { bold: true, color: { argb: 'FFFFFFFF' } };
+    cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF153772' } };
+    cell.alignment = { horizontal: 'center', vertical: 'middle', wrapText: true };
+    cell.border = { top: { style: 'thin' }, left: { style: 'thin' }, bottom: { style: 'thin' }, right: { style: 'thin' } };
+  });
+
+  rows.forEach((row) => {
+    const dataRow = sheet.addRow([
+      row.name || 'КП',
+      toNumber(row.materialsSumUsd, 0),
+      toNumber(row.worksTotalUsd, 0),
+      toNumber(row.otherCostsUsd, 0),
+      toNumber(row.finalTotalWithDiscountUsd, 0),
+      toNumber(row.grossMarginBeforeTaxesUsd, 0),
+      toNumber(row.taxesUsd, 0),
+      toNumber(row.managerCommissionAfterTaxesUsd, 0),
+      toNumber(row.netProfitUsd, 0)
+    ]);
+    dataRow.eachCell((cell, idx) => {
+      cell.border = { top: { style: 'thin' }, left: { style: 'thin' }, bottom: { style: 'thin' }, right: { style: 'thin' } };
+      cell.alignment = { horizontal: idx === 1 ? 'left' : 'right', vertical: 'middle' };
+      if (idx >= 2) cell.numFmt = '#,##0.00';
+    });
+  });
+};
+
+async function exportAllOffersToExcelFile({
+  offerSheets = [],
+  activeOfferSheetId = '',
+  clientInfo,
+  calculations,
+  workspaceHandle,
+  projectFolderName
+}) {
+  try {
+    if (typeof window.ExcelJS === 'undefined') {
+      throw new Error('Бібліотека ExcelJS не завантажена. Спробуйте оновити сторінку.');
+    }
+    if (!Array.isArray(offerSheets) || offerSheets.length === 0) {
+      throw new Error('Немає листів КП для експорту.');
+    }
+
+    const workbook = new window.ExcelJS.Workbook();
+    const used = new Set();
+    const normalized = offerSheets.map((sheet, idx) => {
+      const base = toSheetName(sheet?.name || `КП ${idx + 1}`, `КП ${idx + 1}`);
+      let candidate = base;
+      let suffix = 2;
+      while (used.has(candidate)) {
+        const trimmed = base.slice(0, Math.max(1, 31 - (` (${suffix})`.length)));
+        candidate = `${trimmed} (${suffix})`;
+        suffix += 1;
+      }
+      used.add(candidate);
+      return { ...sheet, _sheetName: candidate };
+    });
+
+    for (const sheet of normalized) {
+      const snap = sheet?.data || {};
+      const sum = sheet?.summary || {};
+      const groups = snap.equipmentGroups && typeof snap.equipmentGroups === 'object' ? snap.equipmentGroups : {};
+      const workItems = Array.isArray(snap.workItems) ? snap.workItems : [];
+      const otherExpenses = Array.isArray(snap.otherExpenses) ? snap.otherExpenses : [];
+      const workItemsSumUsd = workItems.reduce((acc, item) => acc + toNumber(item?.sumUsd, 0), 0);
+      const installPercentAmountUsd = Math.max(0, toNumber(sum.worksTotalUsd, 0) - workItemsSumUsd);
+      const rates = snap.rates && typeof snap.rates === 'object' ? snap.rates : { eur: 0, usd: 0 };
+
+      const calculatedForSheet = {
+        groups,
+        workItemsSumUsd,
+        otherCostsUsd: toNumber(sum.otherCostsUsd, 0),
+        stationPowerW: toNumber(sum.stationPowerW, 0),
+        sums: {
+          materialsSumUsd: toNumber(sum.materialsSumUsd, 0),
+          finalTotalWithDiscountUsd: toNumber(sum.finalTotalWithDiscountUsd, 0),
+          finalTotalWithDiscountUah: toNumber(sum.finalTotalWithDiscountUah, 0),
+          installPercentAmountUsd,
+          grossMarginBeforeTaxesUsd: toNumber(sum.grossMarginBeforeTaxesUsd, 0),
+          taxesUsd: toNumber(sum.taxesUsd, 0),
+          marginAfterTaxesUsd: toNumber(sum.marginAfterTaxUsd, 0),
+          managerCommissionAfterTaxesUsd: toNumber(sum.managerCommissionAfterTaxesUsd, 0),
+          netMarginUsd: toNumber(sum.netProfitUsd, 0),
+          taxesUah: toNumber(sum.taxesUsd, 0) * toNumber(rates.usd, 0),
+          marginAfterTaxesUah: toNumber(sum.marginAfterTaxUsd, 0) * toNumber(rates.usd, 0),
+          managerCommissionAfterTaxesUah: toNumber(sum.managerCommissionAfterTaxesUsd, 0) * toNumber(rates.usd, 0),
+          netMarginUah: toNumber(sum.netProfitUsd, 0) * toNumber(rates.usd, 0)
+        }
+      };
+
+      await exportToExcelFile({
+        mode: 'offer',
+        projectType: snap.projectType || 'project',
+        clientInfo: snap.clientInfo || clientInfo || {},
+        rates,
+        modulePower: toNumber(snap.modulePower, 0),
+        calculations: calculatedForSheet,
+        installPercent: toNumber(snap.installPercent, 0),
+        managerCommissionRate: toNumber(snap.managerCommissionRate, 0),
+        workspaceHandle,
+        projectFolderName,
+        groupSettings: snap.groupSettings || {},
+        detailLevel: 'summary',
+        workbookOverride: workbook,
+        sheetNameOverride: sheet._sheetName
+      });
+    }
+    addComparisonSheet(workbook, normalized.map((sheet) => ({ ...(sheet.summary || {}), name: sheet.name || 'КП', active: String(sheet.id) === String(activeOfferSheetId) })));
+
+    const outBuffer = await workbook.xlsx.writeBuffer();
+    const outBlob = new Blob([outBuffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+    const outBaseDocName = buildDocumentBaseName(clientInfo, calculations?.stationPowerW || 0);
+    const outFileName = `${outBaseDocName}_Всі_КП.xlsx`;
+
+    await saveToDiskUtility(
+      workspaceHandle,
+      clientInfo,
+      calculations,
+      outFileName,
+      outBlob,
+      'Excel Всі КП',
+      projectFolderName
+    );
+  } catch (err) {
+    console.error('Excel Multi-Offer Export Error:', err);
+    alert(`Помилка при створенні Excel (всі КП): ${err.message}`);
+  }
+}
+
+window.exportAllOffersToExcelFile = exportAllOffersToExcelFile;
