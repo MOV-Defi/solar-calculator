@@ -1189,32 +1189,33 @@ body.pdf-capture-offer .offer-print-container .print-table td:nth-child(8) {
 
 .invoice-print-container .print-table {
   width: 100%;
-  table-layout: auto;
-  font-size: 11px;
+  table-layout: fixed;
+  font-size: 10.8px;
 }
 
 .invoice-print-container .print-table th:first-child,
 .invoice-print-container .print-table td:first-child {
-  width: 3%;
+  width: 4%;
 }
 
 .invoice-print-container .print-table th:nth-child(2),
 .invoice-print-container .print-table td:nth-child(2) {
-  width: 56%;
+  width: 38%;
   min-width: 0;
-  word-break: break-word;
-  overflow-wrap: anywhere;
+  word-break: normal;
+  overflow-wrap: break-word;
   white-space: normal;
+  hyphens: auto;
 }
 
 .invoice-print-container .print-table th:nth-child(3),
 .invoice-print-container .print-table td:nth-child(3) {
-  width: 4%;
+  width: 6%;
 }
 
 .invoice-print-container .print-table th:nth-child(4),
 .invoice-print-container .print-table td:nth-child(4) {
-  width: 4%;
+  width: 6%;
 }
 
 .invoice-print-container .print-table th:nth-child(5),
@@ -1225,17 +1226,32 @@ body.pdf-capture-offer .offer-print-container .print-table td:nth-child(8) {
 .invoice-print-container .print-table td:nth-child(7),
 .invoice-print-container .print-table th:nth-child(8),
 .invoice-print-container .print-table td:nth-child(8) {
-  width: 6%;
+  width: 11.5%;
   white-space: nowrap;
 }
 
 .invoice-print-container .print-table th,
 .invoice-print-container .print-table td {
-  padding: 8px 8px;
+  padding: 6px 7px;
+  line-height: 1.16;
+  overflow: hidden;
+}
+
+.invoice-print-container .print-table th:nth-child(5),
+.invoice-print-container .print-table td:nth-child(5),
+.invoice-print-container .print-table th:nth-child(6),
+.invoice-print-container .print-table td:nth-child(6),
+.invoice-print-container .print-table th:nth-child(7),
+.invoice-print-container .print-table td:nth-child(7),
+.invoice-print-container .print-table th:nth-child(8),
+.invoice-print-container .print-table td:nth-child(8) {
+  padding-left: 3px;
+  padding-right: 3px;
+  font-size: 1.02rem;
 }
 
 .invoice-print-container .print-table th {
-  font-size: 11px;
+  font-size: 10px;
 }
 
 .invoice-print-container .print-total-row td {

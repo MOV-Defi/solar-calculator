@@ -101,7 +101,7 @@ const writeRow = ({ sheet, rowNumber, isOffer, name, unit, qty, priceUsd, totalU
   row.getCell(2).value = unit;
   row.getCell(3).value = qty;
   row.getCell(4).value = isOffer
-    ? { formula: `IF(H${r}>0,H${r}*(1+I${r}/100),${toNumber(priceUsd, 0)})`, result: toNumber(priceUsd, 0) }
+    ? { formula: `IF(H${r}>0;H${r}*(1+I${r}/100);${toNumber(priceUsd, 0)})`, result: toNumber(priceUsd, 0) }
     : priceUsd;
   row.getCell(5).value = { formula: `D${r}*B$4`, result: toNumber(priceUsd, 0) * (sheet.getCell('B4').value || 1) };
   row.getCell(6).value = { formula: `C${r}*D${r}`, result: toNumber(totalUsd, 0) || (toNumber(qty, 0) * toNumber(priceUsd, 0)) };
@@ -113,8 +113,9 @@ const writeRow = ({ sheet, rowNumber, isOffer, name, unit, qty, priceUsd, totalU
     row.getCell(10).value = { formula: `C${r}*H${r}`, result: toNumber(totalCostUsd, 0) || (toNumber(qty, 0) * toNumber(incomingUsd, 0)) };
     row.getCell(11).value = { formula: `F${r}-J${r}`, result: toNumber(totalMarginUsd, 0) || ((toNumber(totalUsd, 0) || (toNumber(qty, 0) * toNumber(priceUsd, 0))) - (toNumber(totalCostUsd, 0) || (toNumber(qty, 0) * toNumber(incomingUsd, 0)))) };
     row.getCell(12).value = { formula: `K${r}*B$4`, result: (toNumber(totalMarginUsd, 0) || ((toNumber(totalUsd, 0) || (toNumber(qty, 0) * toNumber(priceUsd, 0))) - (toNumber(totalCostUsd, 0) || (toNumber(qty, 0) * toNumber(incomingUsd, 0))))) * (sheet.getCell('B4').value || 1) };
-    row.getCell(13).value = { formula: `IF(F${r}>0,K${r}/F${r}*100,0)` };
+    row.getCell(13).value = { formula: `IF(F${r}>0;K${r}/F${r}*100;0)` };
     row.getCell(13).numFmt = '0.0';
+    row.getCell(9).numFmt = '0.0';
   }
 
   styleDataRow(row, isOffer, rowColor);
@@ -135,6 +136,154 @@ const buildExportGroupOrder = (groups = {}) => {
   allKeys.forEach(pushIfExists);
 
   return ordered;
+};
+
+const normalizeItemForExport = (item = {}, rates = {}) => {
+  const usdRate = Math.max(0.000001, toNumber(rates?.usd, 1));
+  const eurRate = Math.max(0, toNumber(rates?.eur, 0));
+  const eurUsdRate = eurRate > 0 ? (eurRate / usdRate) : 0;
+  const qty = Math.max(0, toNumber(item?.quantity, 0));
+  const price = toNumber(item?.price, 0);
+  const incoming = toNumber(item?.incomingPrice, 0);
+  const currency = String(item?.currency || 'USD').toUpperCase();
+
+  let priceNormalizedUsd = price;
+  let incomingPriceNormalizedUsd = incoming;
+  if (currency === 'EUR') {
+    priceNormalizedUsd = price * eurUsdRate;
+    incomingPriceNormalizedUsd = incoming * eurUsdRate;
+  } else if (currency === 'UAH') {
+    priceNormalizedUsd = price / usdRate;
+    incomingPriceNormalizedUsd = incoming / usdRate;
+  }
+
+  const sumUsd = priceNormalizedUsd * qty;
+  const sumUah = sumUsd * usdRate;
+  const priceUah = priceNormalizedUsd * usdRate;
+  const costUsd = incomingPriceNormalizedUsd * qty;
+  const marginUsd = sumUsd - costUsd;
+  const markupPercent = incomingPriceNormalizedUsd > 0 ? ((priceNormalizedUsd - incomingPriceNormalizedUsd) / incomingPriceNormalizedUsd) * 100 : 0;
+
+  return {
+    ...item,
+    quantity: qty,
+    price,
+    incomingPrice: incoming,
+    priceNormalizedUsd,
+    incomingPriceNormalizedUsd,
+    sumUsd,
+    sumUah,
+    priceUah,
+    costUsd,
+    marginUsd,
+    markupPercent: Number.isFinite(toNumber(item?.markupPercent, NaN)) ? toNumber(item?.markupPercent, 0) : markupPercent
+  };
+};
+
+const buildCalculationsForOfferSheetExport = (snap = {}, summary = {}) => {
+  const rates = snap?.rates && typeof snap.rates === 'object' ? snap.rates : { usd: 1, eur: 0 };
+  const groupsRaw = snap?.equipmentGroups && typeof snap.equipmentGroups === 'object' ? snap.equipmentGroups : {};
+  const groupSettingsRaw = snap?.groupSettings && typeof snap.groupSettings === 'object' ? snap.groupSettings : {};
+  const protectionDefaults = {
+    "Захист PV": { mode: 'fixed', name: 'Захист PV', price: 0, incomingPrice: 0, currency: 'USD', unit: 'компл', quantity: 1, markupPercent: 0 },
+    "Захист AC": { mode: 'fixed', name: 'Захист AC', price: 0, incomingPrice: 0, currency: 'USD', unit: 'компл', quantity: 1, markupPercent: 0 },
+    "Захист DC": { mode: 'fixed', name: 'Захист DC', price: 0, incomingPrice: 0, currency: 'USD', unit: 'компл', quantity: 1, markupPercent: 0 }
+  };
+  const groupSettings = { ...protectionDefaults, ...groupSettingsRaw };
+  const groups = {};
+  const groupTotalsUsd = {};
+  const groupTotalsUah = {};
+  const groupCostTotalsUsd = {};
+
+  const groupKeys = Array.from(new Set([
+    ...Object.keys(groupsRaw),
+    ...Object.keys(groupSettings)
+  ]));
+
+  groupKeys.forEach((groupKey) => {
+    const normalizedRows = (Array.isArray(groupsRaw[groupKey]) ? groupsRaw[groupKey] : []).map((row) => normalizeItemForExport(row, rates));
+    const settings = groupSettings[groupKey] || {};
+    const hasDetailedRows = normalizedRows.some((row) => (
+      (String(row?.name || '').trim().length > 0) && (
+        toNumber(row?.sumUsd, 0) !== 0 ||
+        toNumber(row?.sumUah, 0) !== 0 ||
+        toNumber(row?.priceNormalizedUsd, 0) !== 0 ||
+        toNumber(row?.incomingPriceNormalizedUsd, 0) !== 0 ||
+        toNumber(row?.costUsd, 0) !== 0
+      )
+    ));
+    const isDetailedMode = settings.mode === 'detailed' || hasDetailedRows;
+
+    groups[groupKey] = normalizedRows;
+    if (!isDetailedMode) {
+      // Collapsed groups in UI use fixed group settings totals, not detailed row sums.
+      const syntheticGroup = normalizeItemForExport({
+        quantity: toNumber(settings.quantity, 0),
+        price: toNumber(settings.price, 0),
+        incomingPrice: toNumber(settings.incomingPrice, 0),
+        currency: settings.currency || 'USD'
+      }, rates);
+      groupTotalsUsd[groupKey] = toNumber(syntheticGroup.sumUsd, 0);
+      groupTotalsUah[groupKey] = toNumber(syntheticGroup.sumUah, 0);
+      groupCostTotalsUsd[groupKey] = toNumber(syntheticGroup.costUsd, 0);
+    } else {
+      groupTotalsUsd[groupKey] = normalizedRows.reduce((acc, row) => acc + toNumber(row?.sumUsd, 0), 0);
+      groupTotalsUah[groupKey] = normalizedRows.reduce((acc, row) => acc + toNumber(row?.sumUah, 0), 0);
+      groupCostTotalsUsd[groupKey] = normalizedRows.reduce((acc, row) => acc + toNumber(row?.costUsd, 0), 0);
+    }
+  });
+
+  const processedWorkItems = (Array.isArray(snap?.workItems) ? snap.workItems : []).map((row) => normalizeItemForExport(row, rates));
+  const processedOtherExpenses = (Array.isArray(snap?.otherExpenses) ? snap.otherExpenses : []).map((row) => normalizeItemForExport(row, rates));
+
+  const materialsSumUsd = Object.values(groupTotalsUsd).reduce((acc, value) => acc + toNumber(value, 0), 0);
+  const materialsCostUsd = Object.values(groupCostTotalsUsd).reduce((acc, value) => acc + toNumber(value, 0), 0);
+  const workItemsSumUsd = processedWorkItems.reduce((acc, row) => acc + toNumber(row?.sumUsd, 0), 0);
+  const workItemsCostUsd = processedWorkItems.reduce((acc, row) => acc + toNumber(row?.costUsd, 0), 0);
+  const otherCostsUsd = processedOtherExpenses.reduce((acc, row) => acc + toNumber(row?.sumUsd, 0), 0);
+  const otherCostsCostUsd = processedOtherExpenses.reduce((acc, row) => acc + toNumber(row?.costUsd, 0), 0);
+  const installPercentAmountUsd = materialsSumUsd * (Math.max(0, toNumber(snap?.installPercent, 0)) / 100);
+  const finalTotalUsd = materialsSumUsd + workItemsSumUsd + otherCostsUsd + installPercentAmountUsd;
+  const discountPercent = Math.max(0, toNumber(snap?.clientDiscountPercent, 0));
+  const discountUsd = finalTotalUsd * (discountPercent / 100);
+  const finalTotalWithDiscountUsd = Math.max(0, finalTotalUsd - discountUsd);
+  const orderCostUsd = materialsCostUsd + workItemsCostUsd + otherCostsCostUsd;
+  const usdRate = Math.max(0.000001, toNumber(rates?.usd, 1));
+
+  return {
+    groups,
+    groupTotalsUsd,
+    groupTotalsUah,
+    groupCostTotalsUsd,
+    processedWorkItems,
+    processedOtherExpenses,
+    workItemsSumUsd,
+    otherCostsUsd,
+    stationPowerW: toNumber(summary?.stationPowerW, calcInstalledPowerW(groups, toNumber(snap?.modulePower, 0))),
+    taxMode: snap?.taxMode || 'none',
+    sums: {
+      materialsSumUsd,
+      installPercentAmountUsd,
+      finalTotalUsd,
+      finalTotalUah: finalTotalUsd * usdRate,
+      discountPercent,
+      discountUsd,
+      finalTotalWithDiscountUsd,
+      finalTotalWithDiscountUah: finalTotalWithDiscountUsd * usdRate,
+      orderCostUsd,
+      grossMarginBeforeTaxesUsd: toNumber(summary?.grossMarginBeforeTaxesUsd, Math.max(0, finalTotalWithDiscountUsd - orderCostUsd)),
+      taxesUsd: toNumber(summary?.taxesUsd, 0),
+      taxesUah: toNumber(summary?.taxesUsd, 0) * usdRate,
+      marginAfterTaxesUsd: toNumber(summary?.marginAfterTaxUsd, 0),
+      marginAfterTaxesUah: toNumber(summary?.marginAfterTaxUsd, 0) * usdRate,
+      marginAfterTaxUsd: toNumber(summary?.marginAfterTaxUsd, 0),
+      marginAfterTaxUah: toNumber(summary?.marginAfterTaxUsd, 0) * usdRate,
+      managerCommissionAfterTaxesUsd: toNumber(summary?.managerCommissionAfterTaxesUsd, 0),
+      managerCommissionAfterTaxesUah: toNumber(summary?.managerCommissionAfterTaxesUsd, 0) * usdRate,
+      netMarginUsd: toNumber(summary?.netProfitUsd, 0),
+      netMarginUah: toNumber(summary?.netProfitUsd, 0) * usdRate
+    }
+  };
 };
 
 async function exportToExcelFile({
@@ -159,6 +308,7 @@ async function exportToExcelFile({
     const safeGroups = (calculations?.groups && typeof calculations.groups === 'object') ? calculations.groups : {};
     const safeGroupTotalsUsd = (calculations?.groupTotalsUsd && typeof calculations.groupTotalsUsd === 'object') ? calculations.groupTotalsUsd : {};
     const safeGroupTotalsUah = (calculations?.groupTotalsUah && typeof calculations.groupTotalsUah === 'object') ? calculations.groupTotalsUah : {};
+    const safeGroupCostTotalsUsd = (calculations?.groupCostTotalsUsd && typeof calculations.groupCostTotalsUsd === 'object') ? calculations.groupCostTotalsUsd : {};
     const safeProcessedWorkItems = Array.isArray(calculations?.processedWorkItems) ? calculations.processedWorkItems : [];
     const safeProcessedOtherExpenses = Array.isArray(calculations?.processedOtherExpenses) ? calculations.processedOtherExpenses : [];
     const orderedGroupKeys = buildExportGroupOrder(safeGroups);
@@ -168,6 +318,8 @@ async function exportToExcelFile({
     }
 
     const workbook = workbookOverride || new window.ExcelJS.Workbook();
+    // Force Excel to recalculate all formulas on file open.
+    workbook.calcProperties = { fullCalcOnLoad: true };
     const sheet = workbook.addWorksheet(
       String(sheetNameOverride || (isOffer ? 'КП' : 'Накладна')).slice(0, 31)
     );
@@ -296,21 +448,20 @@ async function exportToExcelFile({
       });
     });
 
-    const installPercentValue = toNumber(installPercent, 0);
-    const installPercentUsd = toNumber(calculations.sums?.materialsSumUsd, 0) * (installPercentValue / 100);
-    const usdRate = toNumber(rates?.usd, 0);
-    const installPercentUah = installPercentUsd * (usdRate > 0 ? usdRate : 1);
-    if (installPercentUsd > 0) {
-      workRows.push({
-        name: 'Монтажні і пусконалагоджувальні роботи',
-        unit: 'посл.',
-        qty: 1,
-        unitPriceUsd: installPercentUsd,
-        unitPriceUah: installPercentUah,
-        sumUsd: installPercentUsd,
-        sumUah: installPercentUah
-      });
-    }
+    const installPercentValue = Math.max(0, toNumber(installPercent, 0));
+    workRows.push({
+      name: 'Монтажні і пусконалагоджувальні роботи',
+      unit: 'посл.',
+      qty: 1,
+      unitPriceUsd: 0,
+      unitPriceUah: 0,
+      sumUsd: 0,
+      sumUah: 0,
+      isInstallPercent: true
+    });
+    sheet.getCell('A6').value = 'Монтаж, % від суми обладнання:';
+    sheet.getCell('B6').value = installPercentValue;
+    sheet.getCell('B6').numFmt = '0.0';
 
     const paintSection = (rowIdx, title) => {
       sheet.mergeCells(`A${rowIdx}:H${rowIdx}`);
@@ -357,8 +508,11 @@ async function exportToExcelFile({
     let rowNum = headerRow + 1;
     let index = 1;
 
+    let goodsDataStartRow = null;
+    let goodsDataEndRow = null;
     if (goodsRows.length > 0) {
       paintSection(rowNum++, 'Товари');
+      goodsDataStartRow = rowNum;
       goodsRows.forEach((it, i) => {
         paintDataRow(rowNum++, [
           index++,
@@ -371,11 +525,13 @@ async function exportToExcelFile({
           it.sumUah
         ], i % 2 === 1);
       });
+      goodsDataEndRow = rowNum - 1;
     }
 
     if (workRows.length > 0) {
       paintSection(rowNum++, 'Монтажні та інші витрати');
       workRows.forEach((it, i) => {
+        const dataRowNumber = rowNum;
         paintDataRow(rowNum++, [
           index++,
           it.name,
@@ -386,11 +542,22 @@ async function exportToExcelFile({
           it.sumUsd,
           it.sumUah
         ], i % 2 === 1);
+        if (it.isInstallPercent) {
+          const goodsSumFormula = (goodsDataStartRow && goodsDataEndRow && goodsDataEndRow >= goodsDataStartRow)
+            ? `SUM(G${goodsDataStartRow}:G${goodsDataEndRow})`
+            : '0';
+          sheet.getCell(`E${dataRowNumber}`).value = { formula: `${goodsSumFormula}*$B$6/100` };
+          sheet.getCell(`G${dataRowNumber}`).value = { formula: `D${dataRowNumber}*E${dataRowNumber}` };
+          sheet.getCell(`F${dataRowNumber}`).value = { formula: `E${dataRowNumber}*B$4` };
+          sheet.getCell(`H${dataRowNumber}`).value = { formula: `G${dataRowNumber}*B$4` };
+        }
       });
     }
 
     const totalUsd = toNumber(calculations.sums?.finalTotalUsd, 0);
     const totalUah = toNumber(calculations.sums?.finalTotalUah, 0);
+    const totalDataStartRow = headerRow + 1;
+    const totalDataEndRow = Math.max(totalDataStartRow, rowNum - 1);
 
     const totalRowIdx = rowNum + 1;
     sheet.mergeCells(`A${totalRowIdx}:F${totalRowIdx}`);
@@ -401,14 +568,14 @@ async function exportToExcelFile({
     totalLabel.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFFDE68A' } };
 
     const totalUsdCell = sheet.getCell(`G${totalRowIdx}`);
-    totalUsdCell.value = totalUsd;
+    totalUsdCell.value = { formula: `SUM(G${totalDataStartRow}:G${totalDataEndRow})`, result: totalUsd };
     totalUsdCell.font = { name: 'Arial', size: 12, bold: true, color: { argb: 'FF153772' } };
     totalUsdCell.alignment = { horizontal: 'right', vertical: 'middle' };
     totalUsdCell.numFmt = '#,##0.00';
     totalUsdCell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFFDE68A' } };
 
     const totalUahCell = sheet.getCell(`H${totalRowIdx}`);
-    totalUahCell.value = totalUah;
+    totalUahCell.value = { formula: `SUM(H${totalDataStartRow}:H${totalDataEndRow})`, result: totalUah };
     totalUahCell.font = { name: 'Arial', size: 12, bold: true, color: { argb: 'FF153772' } };
     totalUahCell.alignment = { horizontal: 'right', vertical: 'middle' };
     totalUahCell.numFmt = '#,##0.00';
@@ -505,10 +672,13 @@ async function exportToExcelFile({
   sheet.getCell('A5').value = 'євро/долар';
   sheet.getCell('B5').value = { formula: 'B3/B4' };
 
-  sheet.getCell('A6').value = 'Потужність одного модуля, вт:';
+  sheet.getCell('A6').value = 'Монтаж, % від обладнання:';
+  sheet.getCell('B6').value = Math.max(0, toNumber(installPercent, 0));
+  sheet.getCell('B6').numFmt = '0.0';
+  sheet.getCell('A7').value = 'Потужність одного модуля, вт:';
   const panelPowerW = detectPanelPowerW(calculations?.groups || {}, modulePower);
-  sheet.getCell('C6').value = panelPowerW;
-  sheet.getCell('E6').value = 'Встановлена потужність, вт:';
+  sheet.getCell('C7').value = panelPowerW;
+  sheet.getCell('E7').value = 'Встановлена потужність, вт:';
 
   const headerRowIdx = 8;
   const baseHeaders = [
@@ -595,8 +765,7 @@ const isExpandableByType = (groupKey) => {
     const items = Array.isArray(safeGroups[groupKey]) ? safeGroups[groupKey] : [];
     const totalUsd = toNumber(safeGroupTotalsUsd[groupKey], 0);
     const totalUah = toNumber(safeGroupTotalsUah[groupKey], 0);
-    const totalCostUsd = items.reduce((acc, it) => acc + toNumber(it?.costUsd, 0), 0);
-
+    const totalCostUsd = toNumber(safeGroupCostTotalsUsd[groupKey], items.reduce((acc, it) => acc + toNumber(it?.costUsd, 0), 0));
     const settings = groupSettings[groupKey] || {};
     const isExpandableGroup = isExpandableByType(groupKey);
 
@@ -604,41 +773,43 @@ const isExpandableByType = (groupKey) => {
     if (!hasNamedItems && totalUsd === 0 && totalUah === 0 && totalCostUsd === 0) return;
 
     if (isFullSpec && isExpandableGroup) {
-      if (totalUsd !== 0 || totalCostUsd !== 0) {
-        const qty = toNumber(settings.quantity, 1) || 1;
-        const unit = settings.unit || 'компл';
-        const priceUsd = qty > 0 ? (totalUsd / qty) : totalUsd;
-        const incomingUsd = qty > 0 ? (totalCostUsd / qty) : totalCostUsd;
-        const groupRowColor = stripeIdx % 2 === 0 ? 'FFEAF1FF' : 'FFE3ECFF';
+      const isDetailedMode = settings.mode === 'detailed';
+      const qty = toNumber(settings.quantity, 1) || 1;
+      const unit = settings.unit || 'компл';
+      const priceUsd = qty > 0 ? (totalUsd / qty) : totalUsd;
+      const incomingUsd = qty > 0 ? (totalCostUsd / qty) : totalCostUsd;
+      const groupRowColor = stripeIdx % 2 === 0 ? 'FFEAF1FF' : 'FFE3ECFF';
 
-        writeRow({
-          sheet,
-          rowNumber: currentRow,
-          isOffer,
-          name: settings.name || groupKey,
-          unit,
-          qty,
-          priceUsd,
-          totalUsd,
-          totalUah,
-          incomingUsd,
-          markupPercent: toNumber(settings.markupPercent, incomingUsd > 0 ? ((priceUsd - incomingUsd) / incomingUsd) * 100 : 0),
-          totalCostUsd,
-          totalMarginUsd: totalUsd - totalCostUsd,
-          rowColor: groupRowColor
-        });
-
-        addRowRefs(currentRow);
-        currentRow += 1;
-        stripeIdx += 1;
-      }
-
-      items.forEach((item) => {
-        const rawName = (item.name || '').trim();
-        if (!rawName) return;
-        // In full spec, we show items even if they are 'fixed' to provide the breakdown
-        writeItemLine(`   • ${rawName}`, item, 'FFF6FAFF', false);
+      // Keep protection categories separate in full export exactly like in UI:
+      // one category row always, detailed items only for expanded mode.
+      writeRow({
+        sheet,
+        rowNumber: currentRow,
+        isOffer,
+        name: settings.name || groupKey,
+        unit,
+        qty,
+        priceUsd,
+        totalUsd,
+        totalUah,
+        incomingUsd,
+        markupPercent: toNumber(settings.markupPercent, incomingUsd > 0 ? ((priceUsd - incomingUsd) / incomingUsd) * 100 : 0),
+        totalCostUsd,
+        totalMarginUsd: totalUsd - totalCostUsd,
+        rowColor: groupRowColor
       });
+
+      addRowRefs(currentRow);
+      currentRow += 1;
+      stripeIdx += 1;
+
+      if (isDetailedMode) {
+        items.forEach((item) => {
+          const rawName = (item.name || '').trim();
+          if (!rawName) return;
+          writeItemLine(`   • ${rawName}`, item, 'FFF6FAFF', false);
+        });
+      }
       return;
     }
 
@@ -689,11 +860,11 @@ const isExpandableByType = (groupKey) => {
 
   const installedPowerW = calcInstalledPowerW(calculations?.groups || {}, modulePower);
   if (installedPowerW > 0) {
-    sheet.getCell('H6').value = installedPowerW;
-    sheet.getCell('H6').numFmt = '#,##0.00';
+    sheet.getCell('H7').value = installedPowerW;
+    sheet.getCell('H7').numFmt = '#,##0.00';
   } else if (Number.isFinite(calculations.stationPowerW)) {
-    sheet.getCell('H6').value = calculations.stationPowerW;
-    sheet.getCell('H6').numFmt = '#,##0.00';
+    sheet.getCell('H7').value = calculations.stationPowerW;
+    sheet.getCell('H7').numFmt = '#,##0.00';
   }
 
   currentRow += 1;
@@ -841,24 +1012,32 @@ const isExpandableByType = (groupKey) => {
       stripeIdx += 1;
     });
 
-    const installPercentValue = toNumber(installPercent, 0);
-    const installPercentUsd = toNumber(calculations.sums?.materialsSumUsd, 0) * (installPercentValue / 100);
-    const installPercentCostUsd = 0;
-    if (installPercentUsd > 0) {
-      writeRow({
-        sheet,
-        rowNumber: currentRow,
-        isOffer,
-        name: 'Монтажні і пусконалагоджувальні роботи',
-        unit: 'посл.',
-        qty: 1,
-        priceUsd: installPercentUsd,
-        incomingUsd: installPercentCostUsd,
-        markupPercent: 0,
-        rowColor: 'FFEFF6FF'
-      });
-      currentRow += 1;
+    const installWorkRowNumber = currentRow;
+    writeRow({
+      sheet,
+      rowNumber: installWorkRowNumber,
+      isOffer,
+      name: 'Монтажні і пусконалагоджувальні роботи',
+      unit: 'посл.',
+      qty: 1,
+      priceUsd: 0,
+      incomingUsd: 0,
+      markupPercent: 0,
+      rowColor: 'FFEFF6FF'
+    });
+    sheet.getCell(`D${installWorkRowNumber}`).value = { formula: `F${summaryStartRow}*$B$6/100` };
+    sheet.getCell(`F${installWorkRowNumber}`).value = { formula: `C${installWorkRowNumber}*D${installWorkRowNumber}` };
+    sheet.getCell(`G${installWorkRowNumber}`).value = { formula: `F${installWorkRowNumber}*B$4` };
+    if (isOffer) {
+      sheet.getCell(`H${installWorkRowNumber}`).value = 0;
+      sheet.getCell(`I${installWorkRowNumber}`).value = 0;
+      sheet.getCell(`J${installWorkRowNumber}`).value = 0;
+      sheet.getCell(`K${installWorkRowNumber}`).value = { formula: `F${installWorkRowNumber}-J${installWorkRowNumber}` };
+      sheet.getCell(`L${installWorkRowNumber}`).value = { formula: `K${installWorkRowNumber}*B$4` };
+      sheet.getCell(`M${installWorkRowNumber}`).value = { formula: `IF(F${installWorkRowNumber}>0;K${installWorkRowNumber}/F${installWorkRowNumber}*100;0)` };
+      sheet.getCell(`M${installWorkRowNumber}`).numFmt = '0.0';
     }
+    currentRow += 1;
     const worksEndRow = currentRow - 1;
 
     insRow = sheet.getRow(currentRow++);
@@ -880,6 +1059,10 @@ const isExpandableByType = (groupKey) => {
         insRow.getCell(12).value = 0;
       }
     }
+    // Show dynamic % of works from materials directly in the row label.
+    insRow.getCell(1).value = {
+      formula: `CONCAT("Всього монтаж та запуск (";TEXT(IF(F${summaryStartRow}>0;F${insRow.number}/F${summaryStartRow}*100;0);"0.0");"% від суми товарів):")`
+    };
     enforceTotalsGreen(insRow);
   }
 
@@ -922,7 +1105,7 @@ const isExpandableByType = (groupKey) => {
       finalRow.getCell(11).value = { formula: `K${summaryStartRow}+K${logRow.number}` };
       finalRow.getCell(12).value = { formula: `L${summaryStartRow}+L${logRow.number}` };
     }
-    finalRow.getCell(13).value = { formula: `IF(F${finalRow.number}>0,K${finalRow.number}/F${finalRow.number}*100,0)` };
+    finalRow.getCell(13).value = { formula: `IF(F${finalRow.number}>0;K${finalRow.number}/F${finalRow.number}*100;0)` };
     finalRow.getCell(13).numFmt = '0.0';
     [10, 11, 12, 13].forEach((i) => {
       const c = finalRow.getCell(i);
@@ -942,7 +1125,7 @@ const isExpandableByType = (groupKey) => {
       withoutDiscountRow.getCell(10).value = toNumber(calculations?.sums?.orderCostUsd, 0);
       withoutDiscountRow.getCell(11).value = toNumber(calculations?.sums?.finalTotalUsd, 0) - toNumber(calculations?.sums?.orderCostUsd, 0);
       withoutDiscountRow.getCell(12).value = (toNumber(calculations?.sums?.finalTotalUsd, 0) - toNumber(calculations?.sums?.orderCostUsd, 0)) * toNumber(rates?.usd, 1);
-      withoutDiscountRow.getCell(13).value = { formula: `IF(F${withoutDiscountRow.number}>0,K${withoutDiscountRow.number}/F${withoutDiscountRow.number}*100,0)` };
+      withoutDiscountRow.getCell(13).value = { formula: `IF(F${withoutDiscountRow.number}>0;K${withoutDiscountRow.number}/F${withoutDiscountRow.number}*100;0)` };
       withoutDiscountRow.getCell(13).numFmt = '0.0';
       for (let i = 1; i <= outHeaders.length; i += 1) {
         const c = withoutDiscountRow.getCell(i);
@@ -969,7 +1152,7 @@ const isExpandableByType = (groupKey) => {
       withDiscountRow.getCell(10).value = toNumber(calculations?.sums?.orderCostUsd, 0);
       withDiscountRow.getCell(11).value = toNumber(calculations?.sums?.finalTotalWithDiscountUsd, 0) - toNumber(calculations?.sums?.orderCostUsd, 0);
       withDiscountRow.getCell(12).value = (toNumber(calculations?.sums?.finalTotalWithDiscountUsd, 0) - toNumber(calculations?.sums?.orderCostUsd, 0)) * toNumber(rates?.usd, 1);
-      withDiscountRow.getCell(13).value = { formula: `IF(F${withDiscountRow.number}>0,K${withDiscountRow.number}/F${withDiscountRow.number}*100,0)` };
+      withDiscountRow.getCell(13).value = { formula: `IF(F${withDiscountRow.number}>0;K${withDiscountRow.number}/F${withDiscountRow.number}*100;0)` };
       withDiscountRow.getCell(13).numFmt = '0.0';
       for (let i = 1; i <= outHeaders.length; i += 1) {
         const c = withDiscountRow.getCell(i);
@@ -1034,8 +1217,7 @@ const isExpandableByType = (groupKey) => {
     }
 
     if (isFullSpec) {
-      const orderBaseUsdForPercents = Math.max(0.000001, toNumber(calculations?.sums?.finalTotalWithDiscountUsd, 0));
-      const addPctLabel = (label, usdValue) => `${label} (${((toNumber(usdValue, 0) / orderBaseUsdForPercents) * 100).toFixed(1)}% від замовлення)`;
+      const addPctLabel = (label) => label;
       currentRow += 2;
       const financeHeaderRow = sheet.getRow(currentRow++);
       financeHeaderRow.getCell(1).value = 'Маржинальність та прибутковість';
@@ -1046,11 +1228,11 @@ const isExpandableByType = (groupKey) => {
         c.border = { top: { style: 'thin' }, left: { style: 'thin' }, bottom: { style: 'thin' }, right: { style: 'thin' } };
       }
 
-      const writeFinanceLine = (label, usdValue, uahValue) => {
+      const writeFinanceLine = (label, usdValue, uahValue = null) => {
         const row = sheet.getRow(currentRow++);
         row.getCell(1).value = label;
-        row.getCell(11).value = toNumber(usdValue, 0);
-        row.getCell(12).value = toNumber(uahValue, 0);
+        row.getCell(11).value = usdValue;
+        row.getCell(12).value = uahValue === null ? { formula: `K${row.number}*B$4` } : uahValue;
         for (let i = 1; i <= outHeaders.length; i += 1) {
           const c = row.getCell(i);
           c.border = { top: { style: 'thin' }, left: { style: 'thin' }, bottom: { style: 'thin' }, right: { style: 'thin' } };
@@ -1062,11 +1244,15 @@ const isExpandableByType = (groupKey) => {
         }
       };
 
-      writeFinanceLine(addPctLabel('Маржа з товару', calculations?.sums?.marginMaterialsUsd), calculations?.sums?.marginMaterialsUsd, toNumber(calculations?.sums?.marginMaterialsUsd, 0) * toNumber(rates?.usd, 1));
-      writeFinanceLine(addPctLabel('Маржа з робіт', calculations?.sums?.marginWorksUsd), calculations?.sums?.marginWorksUsd, toNumber(calculations?.sums?.marginWorksUsd, 0) * toNumber(rates?.usd, 1));
-      writeFinanceLine(addPctLabel('Загальна маржа (до податків)', calculations?.sums?.grossMarginBeforeTaxesUsd), calculations?.sums?.grossMarginBeforeTaxesUsd, toNumber(calculations?.sums?.grossMarginBeforeTaxesUsd, 0) * toNumber(rates?.usd, 1));
-      writeFinanceLine(addPctLabel(`Комісія менеджера до податків (${managerCommissionRate}%)`, calculations?.sums?.managerCommissionBeforeTaxesUsd), calculations?.sums?.managerCommissionBeforeTaxesUsd, toNumber(calculations?.sums?.managerCommissionBeforeTaxesUsd, 0) * toNumber(rates?.usd, 1));
-      writeFinanceLine(addPctLabel('Чиста маржа до податків', calculations?.sums?.netMarginBeforeTaxesUsd), calculations?.sums?.netMarginBeforeTaxesUsd, toNumber(calculations?.sums?.netMarginBeforeTaxesUsd, 0) * toNumber(rates?.usd, 1));
+      const materialsMarginRow = currentRow;
+      writeFinanceLine(addPctLabel('Маржа з товару'), { formula: `K${summaryStartRow}` });
+      const worksMarginRow = currentRow;
+      writeFinanceLine(addPctLabel('Маржа з робіт'), { formula: insRow ? `K${insRow.number}` : '0' });
+      const grossMarginRow = currentRow;
+      writeFinanceLine(addPctLabel('Загальна маржа (до податків)'), { formula: `K${finalRow.number}` });
+      const managerBeforeTaxRow = currentRow;
+      writeFinanceLine(addPctLabel(`Комісія менеджера до податків (${managerCommissionRate}%)`), { formula: `K${grossMarginRow}*${toNumber(managerCommissionRate, 0) / 100}` });
+      writeFinanceLine(addPctLabel('Чиста маржа до податків'), { formula: `K${grossMarginRow}-K${managerBeforeTaxRow}` });
 
       currentRow += 1;
       const taxHeaderRow = sheet.getRow(currentRow++);
@@ -1078,11 +1264,11 @@ const isExpandableByType = (groupKey) => {
         c.border = { top: { style: 'thin' }, left: { style: 'thin' }, bottom: { style: 'thin' }, right: { style: 'thin' } };
       }
 
-      const writeTaxLine = (label, usdValue, uahValue) => {
+      const writeTaxLine = (label, usdValue, uahValue = null) => {
         const row = sheet.getRow(currentRow++);
         row.getCell(1).value = label;
-        row.getCell(11).value = toNumber(usdValue, 0);
-        row.getCell(12).value = toNumber(uahValue, 0);
+        row.getCell(11).value = usdValue;
+        row.getCell(12).value = uahValue === null ? { formula: `K${row.number}*B$4` } : uahValue;
         for (let i = 1; i <= outHeaders.length; i += 1) {
           const c = row.getCell(i);
           c.border = { top: { style: 'thin' }, left: { style: 'thin' }, bottom: { style: 'thin' }, right: { style: 'thin' } };
@@ -1113,7 +1299,7 @@ const isExpandableByType = (groupKey) => {
       const taxTotalRow = sheet.getRow(currentRow++);
       taxTotalRow.getCell(1).value = 'Разом податки:';
       taxTotalRow.getCell(11).value = taxesUsd;
-      taxTotalRow.getCell(12).value = taxesUah;
+      taxTotalRow.getCell(12).value = { formula: `K${taxTotalRow.number}*B$4`, result: taxesUah };
       for (let i = 1; i <= outHeaders.length; i += 1) {
         const c = taxTotalRow.getCell(i);
         c.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: i >= 11 ? 'FF92D050' : 'FFE9F4DA' } };
@@ -1133,9 +1319,9 @@ const isExpandableByType = (groupKey) => {
       }
 
       const afterTaxMarginRowNumber = currentRow;
-      writeTaxLine(addPctLabel('Маржа після податків', calculations?.sums?.marginAfterTaxesUsd), calculations?.sums?.marginAfterTaxesUsd, calculations?.sums?.marginAfterTaxesUah);
+      writeTaxLine(addPctLabel('Маржа після податків'), { formula: `K${grossMarginRow}-K${taxTotalRow.number}` });
       const afterTaxCommissionRowNumber = currentRow;
-      writeTaxLine(addPctLabel('Комісія менеджера після податків', calculations?.sums?.managerCommissionAfterTaxesUsd), calculations?.sums?.managerCommissionAfterTaxesUsd, calculations?.sums?.managerCommissionAfterTaxesUah);
+      writeTaxLine(addPctLabel('Комісія менеджера після податків'), { formula: `K${afterTaxMarginRowNumber}*${toNumber(managerCommissionRate, 0) / 100}` });
       const netRow = sheet.getRow(currentRow++);
       netRow.getCell(1).value = addPctLabel('Чистий прибуток', calculations?.sums?.netMarginUsd);
       netRow.getCell(11).value = {
@@ -1254,7 +1440,8 @@ async function exportAllOffersToExcelFile({
   clientInfo,
   calculations,
   workspaceHandle,
-  projectFolderName
+  projectFolderName,
+  detailLevel = 'full'
 }) {
   try {
     if (typeof window.ExcelJS === 'undefined') {
@@ -1282,34 +1469,10 @@ async function exportAllOffersToExcelFile({
     for (const sheet of normalized) {
       const snap = sheet?.data || {};
       const sum = sheet?.summary || {};
-      const groups = snap.equipmentGroups && typeof snap.equipmentGroups === 'object' ? snap.equipmentGroups : {};
-      const workItems = Array.isArray(snap.workItems) ? snap.workItems : [];
-      const otherExpenses = Array.isArray(snap.otherExpenses) ? snap.otherExpenses : [];
-      const workItemsSumUsd = workItems.reduce((acc, item) => acc + toNumber(item?.sumUsd, 0), 0);
-      const installPercentAmountUsd = Math.max(0, toNumber(sum.worksTotalUsd, 0) - workItemsSumUsd);
-      const rates = snap.rates && typeof snap.rates === 'object' ? snap.rates : { eur: 0, usd: 0 };
-
-      const calculatedForSheet = {
-        groups,
-        workItemsSumUsd,
-        otherCostsUsd: toNumber(sum.otherCostsUsd, 0),
-        stationPowerW: toNumber(sum.stationPowerW, 0),
-        sums: {
-          materialsSumUsd: toNumber(sum.materialsSumUsd, 0),
-          finalTotalWithDiscountUsd: toNumber(sum.finalTotalWithDiscountUsd, 0),
-          finalTotalWithDiscountUah: toNumber(sum.finalTotalWithDiscountUah, 0),
-          installPercentAmountUsd,
-          grossMarginBeforeTaxesUsd: toNumber(sum.grossMarginBeforeTaxesUsd, 0),
-          taxesUsd: toNumber(sum.taxesUsd, 0),
-          marginAfterTaxesUsd: toNumber(sum.marginAfterTaxUsd, 0),
-          managerCommissionAfterTaxesUsd: toNumber(sum.managerCommissionAfterTaxesUsd, 0),
-          netMarginUsd: toNumber(sum.netProfitUsd, 0),
-          taxesUah: toNumber(sum.taxesUsd, 0) * toNumber(rates.usd, 0),
-          marginAfterTaxesUah: toNumber(sum.marginAfterTaxUsd, 0) * toNumber(rates.usd, 0),
-          managerCommissionAfterTaxesUah: toNumber(sum.managerCommissionAfterTaxesUsd, 0) * toNumber(rates.usd, 0),
-          netMarginUah: toNumber(sum.netProfitUsd, 0) * toNumber(rates.usd, 0)
-        }
-      };
+      const rates = snap?.rates && typeof snap.rates === 'object' ? snap.rates : { eur: 0, usd: 1 };
+      const calculatedForSheet = (snap?.calculationsSnapshot && typeof snap.calculationsSnapshot === 'object')
+        ? snap.calculationsSnapshot
+        : buildCalculationsForOfferSheetExport(snap, sum);
 
       await exportToExcelFile({
         mode: 'offer',
@@ -1323,7 +1486,7 @@ async function exportAllOffersToExcelFile({
         workspaceHandle,
         projectFolderName,
         groupSettings: snap.groupSettings || {},
-        detailLevel: 'summary',
+        detailLevel: detailLevel === 'summary' ? 'summary' : 'full',
         workbookOverride: workbook,
         sheetNameOverride: sheet._sheetName
       });
@@ -1333,7 +1496,8 @@ async function exportAllOffersToExcelFile({
     const outBuffer = await workbook.xlsx.writeBuffer();
     const outBlob = new Blob([outBuffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
     const outBaseDocName = buildDocumentBaseName(clientInfo, calculations?.stationPowerW || 0);
-    const outFileName = `${outBaseDocName}_Всі_КП.xlsx`;
+    const suffix = detailLevel === 'summary' ? 'Зведено' : 'Повна';
+    const outFileName = `${outBaseDocName}_Всі_КП_${suffix}.xlsx`;
 
     await saveToDiskUtility(
       workspaceHandle,

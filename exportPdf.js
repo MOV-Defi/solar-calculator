@@ -5,7 +5,8 @@ async function exportToPdfFile({
   clientInfo,
   calculations,
   workspaceHandle,
-  projectFolderName
+  projectFolderName,
+  appendedPdfFiles = []
 }) {
   const { jsPDF } = window.jspdf;
   const element = document.querySelector('.print-container');
@@ -105,7 +106,10 @@ async function exportToPdfFile({
         offerPdf.addImage(pageImg, 'PNG', drawX, drawY, drawW, drawH);
       }
 
-      const pdfBlob = offerPdf.output('blob');
+      let pdfBlob = offerPdf.output('blob');
+      if (Array.isArray(appendedPdfFiles) && appendedPdfFiles.length > 0) {
+        pdfBlob = await mergePdfBlobs(pdfBlob, appendedPdfFiles);
+      }
       const typeLabel = 'КП';
       const fileName = `${typeLabel}_${clientInfo.name || 'UNNAMED'}.pdf`;
       await saveToDiskUtility(workspaceHandle, clientInfo, calculations, fileName, pdfBlob, typeLabel, projectFolderName);
@@ -128,11 +132,45 @@ async function exportToPdfFile({
     }
   }
   
-  const pdfBlob = pdf.output('blob');
+  let pdfBlob = pdf.output('blob');
+  if (printMode === 'offer' && Array.isArray(appendedPdfFiles) && appendedPdfFiles.length > 0) {
+    pdfBlob = await mergePdfBlobs(pdfBlob, appendedPdfFiles);
+  }
   const typeLabel = printMode === 'offer' ? 'КП' : 'Накладна';
   const fileName = `${typeLabel}_${clientInfo.name || 'UNNAMED'}.pdf`;
   
   await saveToDiskUtility(workspaceHandle, clientInfo, calculations, fileName, pdfBlob, typeLabel, projectFolderName);
+}
+
+async function mergePdfBlobs(mainPdfBlob, appendPdfFilesOrBlobs) {
+  if (!mainPdfBlob || !appendPdfFilesOrBlobs) return mainPdfBlob;
+  if (!window.PDFLib || !window.PDFLib.PDFDocument) {
+    console.warn('PDFLib not loaded, skip append PDF');
+    return mainPdfBlob;
+  }
+  try {
+    const { PDFDocument } = window.PDFLib;
+    const mergedPdf = await PDFDocument.create();
+    const mainBytes = await mainPdfBlob.arrayBuffer();
+    const mainDoc = await PDFDocument.load(mainBytes);
+    const mainPages = await mergedPdf.copyPages(mainDoc, mainDoc.getPageIndices());
+    mainPages.forEach((page) => mergedPdf.addPage(page));
+    const extras = Array.isArray(appendPdfFilesOrBlobs) ? appendPdfFilesOrBlobs : [appendPdfFilesOrBlobs];
+    for (const extraFile of extras) {
+      if (!extraFile) continue;
+      const extraBytes = await extraFile.arrayBuffer();
+      const extraDoc = await PDFDocument.load(extraBytes);
+      const extraPages = await mergedPdf.copyPages(extraDoc, extraDoc.getPageIndices());
+      extraPages.forEach((page) => mergedPdf.addPage(page));
+    }
+
+    const mergedBytes = await mergedPdf.save();
+    return new Blob([mergedBytes], { type: 'application/pdf' });
+  } catch (error) {
+    console.error('PDF merge error:', error);
+    alert('Не вдалося додати вкладений PDF до КП. Збережено лише основний КП PDF.');
+    return mainPdfBlob;
+  }
 }
 
 window.exportToPdfFile = exportToPdfFile;

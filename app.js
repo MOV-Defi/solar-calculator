@@ -616,6 +616,8 @@ function App() {
   }, [productDatabase]);
 
   const [printMode, setPrintMode] = useState(null); // null, 'offer', 'invoice'
+  const [offerAppendPdfFiles, setOfferAppendPdfFiles] = useState([]);
+  const offerAppendPdfInputRef = useRef(null);
   const [activeDropdown, setActiveDropdown] = useState(null);
   const [workspaceHandle, setWorkspaceHandle] = useState(null);
   const [workspacePinned, setWorkspacePinned] = useState(false);
@@ -1183,6 +1185,7 @@ function App() {
     taxDistributionScope,
     installPercentTaxUsd,
     autoInstallPercentEnabled,
+    calculationsSnapshot: calculations,
     groupSettings,
     autoMountingQuantity,
     projectType
@@ -1407,125 +1410,6 @@ function App() {
     if (input) input.click();
   };
 
-  const exportProductsCatalog = async () => {
-    const payload = buildCatalogPayloadFromPricingMap(productLastValues);
-    const fileName = 'products_catalog.json';
-
-    if (workspaceHandle) {
-      const saved = await writeWorkspaceJson(workspaceHandle, PRODUCTS_CATALOG_FILE, payload);
-      if (saved) {
-        lastCatalogSignatureRef.current = JSON.stringify(payload.items || []);
-      }
-    }
-
-    const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' });
-    const link = document.createElement('a');
-    link.href = URL.createObjectURL(blob);
-    link.download = fileName;
-    link.click();
-    URL.revokeObjectURL(link.href);
-  };
-
-  const openCatalogImportPicker = () => {
-    const input = document.getElementById('catalog-file-input');
-    if (input) input.click();
-  };
-
-  const importProductsCatalog = async (e) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-
-    const reader = new FileReader();
-    reader.onload = async (event) => {
-      try {
-        const parsed = JSON.parse(event.target.result);
-        const normalizedCatalog = Array.isArray(parsed)
-          ? { schemaVersion: 1, updatedAt: new Date().toISOString(), items: parsed }
-          : parsed;
-
-        if (!normalizedCatalog || !Array.isArray(normalizedCatalog.items)) {
-          throw new Error('Invalid catalog format');
-        }
-
-        const groupsSnapshot = toGroupsSnapshotFromCatalog(normalizedCatalog);
-        if (Object.keys(groupsSnapshot).length > 0) {
-          rememberProjectCatalog(groupsSnapshot);
-        }
-
-        lastCatalogSignatureRef.current = JSON.stringify(normalizedCatalog.items || []);
-        if (workspaceHandle) {
-          await writeWorkspaceJson(workspaceHandle, PRODUCTS_CATALOG_FILE, normalizedCatalog);
-        }
-        alert('Базу товарів імпортовано.');
-      } catch (error) {
-        console.error('Catalog import error', error);
-        alert('Не вдалося імпортувати базу. Перевірте формат JSON.');
-      } finally {
-        e.target.value = null;
-      }
-    };
-    reader.readAsText(file);
-  };
-
-  const exportTemplatesCatalog = async () => {
-    const payload = buildTemplatesCatalogPayload(templates);
-    const fileName = 'templates_catalog.json';
-
-    if (workspaceHandle) {
-      const saved = await writeWorkspaceJson(workspaceHandle, TEMPLATES_CATALOG_FILE, payload);
-      if (saved) {
-        lastTemplatesSignatureRef.current = getTemplatesCatalogSignature(payload.templates || []);
-      }
-    }
-
-    const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' });
-    const link = document.createElement('a');
-    link.href = URL.createObjectURL(blob);
-    link.download = fileName;
-    link.click();
-    URL.revokeObjectURL(link.href);
-  };
-
-  const openTemplatesImportPicker = () => {
-    const input = document.getElementById('templates-file-input');
-    if (input) input.click();
-  };
-
-  const importTemplatesCatalog = async (e) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-
-    const reader = new FileReader();
-    reader.onload = async (event) => {
-      try {
-        const parsed = JSON.parse(event.target.result);
-        const normalizedTemplates = normalizeImportedTemplates(parsed);
-        if (!normalizedTemplates) {
-          throw new Error('Invalid templates format');
-        }
-
-        setTemplates(normalizedTemplates);
-        setSelectedTemplateId("");
-        setTemplateName("");
-        const importedSignature = getTemplatesCatalogSignature(normalizedTemplates);
-
-        if (workspaceHandle) {
-          const saved = await writeWorkspaceJson(workspaceHandle, TEMPLATES_CATALOG_FILE, buildTemplatesCatalogPayload(normalizedTemplates));
-          if (saved) lastTemplatesSignatureRef.current = importedSignature;
-        } else {
-          lastTemplatesSignatureRef.current = importedSignature;
-        }
-        await saveServerTemplatesCatalog(normalizedTemplates);
-        alert('Шаблони імпортовано.');
-      } catch (error) {
-        console.error('Templates import error', error);
-        alert('Не вдалося імпортувати шаблони. Перевірте формат JSON.');
-      } finally {
-        e.target.value = null;
-      }
-    };
-    reader.readAsText(file);
-  };
 
   const openProjectFromFile = (e) => {
     const file = e.target.files?.[0];
@@ -1802,40 +1686,28 @@ function App() {
     }
   };
 
-  const exportAllOffersToExcel = async () => {
-    try {
-      persistCurrentSheetState();
-      const sheets = (Array.isArray(offerSheets) ? offerSheets : []).map((sheet) => (
-        String(sheet.id) === String(activeOfferSheetId)
-          ? {
-              ...sheet,
-              data: buildOfferSheetSnapshot(),
-              summary: buildOfferSheetSummary(),
-              updatedAt: new Date().toISOString()
-            }
-          : sheet
-      ));
-      await exportAllOffersToExcelFile({
-        offerSheets: sheets,
-        activeOfferSheetId,
-        clientInfo,
-        calculations,
-        workspaceHandle,
-        projectFolderName
-      });
-    } catch (err) {
-      console.error('Export all offers trigger error', err);
-      alert('Помилка запуску експорту Excel (всі КП). Перевірте консоль браузера.');
-    }
-  };
-
   const exportToPdf = async () => {
     await exportToPdfFile({
       printMode,
       clientInfo,
       calculations,
       workspaceHandle,
-      projectFolderName
+      projectFolderName,
+      appendedPdfFiles: printMode === 'offer' ? offerAppendPdfFiles : []
+    });
+  };
+
+  const addOfferAppendPdfFiles = (incomingFiles) => {
+    const picked = Array.from(incomingFiles || []).filter((f) => /\.pdf$/i.test(String(f?.name || '')) || String(f?.type || '').toLowerCase() === 'application/pdf');
+    if (!picked.length) return;
+    setOfferAppendPdfFiles((prev) => {
+      const next = [...(Array.isArray(prev) ? prev : [])];
+      for (const file of picked) {
+        if (next.length >= 5) break;
+        const already = next.some((x) => x.name === file.name && x.size === file.size && x.lastModified === file.lastModified);
+        if (!already) next.push(file);
+      }
+      return next;
     });
   };
 
@@ -2929,6 +2801,11 @@ function App() {
   };
   const totalUsdParts = splitMoneyParts(calculations.sums.finalTotalWithDiscountUsd);
   const totalUahParts = splitMoneyParts(calculations.sums.finalTotalWithDiscountUah);
+  const totalBeforeDiscountUsdParts = splitMoneyParts(calculations.sums.finalTotalUsd || 0);
+  const totalBeforeDiscountUahParts = splitMoneyParts(calculations.sums.finalTotalUah || 0);
+  const discountUsdParts = splitMoneyParts(calculations.sums.discountUsd || 0);
+  const discountUahParts = splitMoneyParts((calculations.sums.discountUsd || 0) * toNumber(rates.usd, 0));
+  const hasOfferDiscount = toNumber(calculations.sums.discountPercent, 0) > 0;
   const solarPowerKw = toNumber(calculations.stationPowerW, 0) / 1000;
   const allRows = Object.values(calculations.groups).flat();
   const inverterRows = allRows.filter((row) => row && String(row.type || "").trim() === "Інвертор");
@@ -3357,7 +3234,6 @@ function App() {
               <option value="sidebar">Бокове меню</option>
             </select>
             <button type="button" className="secondary menu-action-btn" data-cat="export" style={{background: "#059669"}} onClick={() => exportToExcel("offer", "summary")} data-title="Excel (зведено)"><MenuBtnLabel icon="📊" label="Excel (зведено)" /></button>
-            <button type="button" className="secondary menu-action-btn" data-cat="export" style={{background: "#0b8f6a"}} onClick={exportAllOffersToExcel} data-title="Excel (всі КП)"><MenuBtnLabel icon="🗂️" label="Excel (всі КП)" /></button>
             <button type="button" className="secondary menu-action-btn" data-cat="export" style={{background: "#0f766e"}} onClick={() => exportToExcel("offer", "full")} data-title="Excel (повна)"><MenuBtnLabel icon="📗" label="Excel (повна)" /></button>
             <button type="button" className="secondary menu-action-btn" data-cat="print" style={{background: '#7c3aed'}} onClick={() => setPrintMode('offer')} data-title="КП"><MenuBtnLabel icon="📄" label="КП" /></button>
             <button type="button" className="secondary menu-action-btn" data-cat="print" style={{background: '#3b82f6'}} onClick={() => setPrintMode('invoice')} data-title="Накладна"><MenuBtnLabel icon="🧾" label="Накладна" /></button>
@@ -3380,9 +3256,6 @@ function App() {
               <button type="button" className="secondary light-surface-btn menu-action-btn" data-cat="project" onClick={saveProject} data-title="Зберегти проєкт"><MenuBtnLabel icon="💾" label="Зберегти проєкт" /></button>
               <button type="button" className="secondary menu-action-btn" data-cat="project" style={{background: '#374151'}} onClick={openProjectPicker} data-title="Відкрити проєкт"><MenuBtnLabel icon="📂" label="Відкрити проєкт" /></button>
               <input id="project-file-input" type="file" accept=".calkproj,.json,.solar.json" onChange={openProjectFromFile} style={{display: 'none'}} />
-              <button type="button" className="secondary menu-action-btn" data-cat="data" style={{background: '#0e7490'}} onClick={exportProductsCatalog} data-title="Експорт бази"><MenuBtnLabel icon="⬇️" label="Експорт бази" /></button>
-              <button type="button" className="secondary menu-action-btn" data-cat="data" style={{background: '#0369a1'}} onClick={openCatalogImportPicker} data-title="Імпорт бази"><MenuBtnLabel icon="⬆️" label="Імпорт бази" /></button>
-              <input id="catalog-file-input" type="file" accept=".json" onChange={importProductsCatalog} style={{display: 'none'}} />
               <button type="button" className="secondary menu-action-btn" data-cat="new" style={{background: '#0f766e'}} onClick={() => setShowNewProjectDialog(true)} data-title="Новий проєкт"><MenuBtnLabel icon="🆕" label="Новий проєкт" /></button>
               <button type="button" className="secondary menu-action-btn" data-cat="mode" style={{background: clientMode ? '#b45309' : '#1f2937'}} onClick={() => setClientMode(prev => !prev)} data-title={clientMode ? 'Режим менеджера' : 'Клієнтський режим'}>
                 <MenuBtnLabel icon={clientMode ? "🛠️" : "👤"} label={clientMode ? 'Режим менеджера' : 'Клієнтський режим'} />
@@ -3396,9 +3269,6 @@ function App() {
               <input type="text" value={templateName} onChange={(e) => setTemplateName(e.target.value)} placeholder="Назва шаблону..." className="project-name-input" />
               <button type="button" className="secondary menu-action-btn" data-cat="template" style={{background: '#4b5563'}} onClick={saveTemplate} data-title="Зберегти шаблон"><MenuBtnLabel icon="💾" label="Зберегти шаблон" /></button>
               <button type="button" className="secondary menu-action-btn" data-cat="template" style={{background: '#2563eb'}} onClick={saveTemplateAsNew} data-title="Зберегти як новий"><MenuBtnLabel icon="🆕" label="Зберегти як" /></button>
-              <button type="button" className="secondary menu-action-btn" data-cat="template" style={{background: '#0e7490'}} onClick={exportTemplatesCatalog} data-title="Експорт шаблонів"><MenuBtnLabel icon="⬇️" label="Експорт шаблонів" /></button>
-              <button type="button" className="secondary menu-action-btn" data-cat="template" style={{background: '#0369a1'}} onClick={openTemplatesImportPicker} data-title="Імпорт шаблонів"><MenuBtnLabel icon="⬆️" label="Імпорт шаблонів" /></button>
-              <input id="templates-file-input" type="file" accept=".json" onChange={importTemplatesCatalog} style={{display: 'none'}} />
               <select className="secondary template-select" onChange={(e) => loadTemplate(e.target.value)} value={selectedTemplateId}>
                 <option value="" disabled>Завантажити шаблон...</option>
                 {templates.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
@@ -4762,7 +4632,7 @@ function App() {
           <div className={`print-container ${printMode === 'offer' ? 'offer-print-container' : ''} ${printMode === 'invoice' ? 'invoice-print-container' : ''}`}>
             {printMode === "offer" && (
               <div className="offer-cover-page">
-                <img className="offer-cover-image" src="./title1.jpg" alt="Обкладинка КП" />
+                <img className="offer-cover-image" src={coverPageType === 'Квартира' ? './title2.jpg' : './title1.jpg'} alt="Обкладинка КП" />
                 <div className="offer-cover-content">
                   <div className="offer-cover-top">КОМЕРЦІЙНА ПРОПОЗИЦІЯ · {coverPageType} · {currentYear}</div>
                   <h1 className="offer-cover-title">{coverMainTitle}</h1>
@@ -4812,7 +4682,7 @@ function App() {
                   <h3>Технічні параметри</h3>
                   <div className="offer-station-list">
                     <div><span>Тип системи:</span><strong>{coverSystemNameFinal}</strong></div>
-                    <div><span>Потужність станції:</span><strong>{formatKw(toNumber(calculations.stationPowerW, 0) / 1000)} кВт</strong></div>
+                    <div><span>Потужність сонячного поля:</span><strong>{formatKw(toNumber(calculations.stationPowerW, 0) / 1000)} кВт</strong></div>
                     <div><span>Потужність інвертора:</span><strong>{formatKw(inverterPowerKw)} кВт</strong></div>
                     <div><span>Ємність АКБ:</span><strong>{formatKw(batteryKwh)} кВт·год</strong></div>
                     {hasSolar && <div><span>Прогноз генерації/рік:</span><strong>{formatMoney(annualGenerationKwh).replace(',00', '')} кВт·год</strong></div>}
@@ -4837,10 +4707,10 @@ function App() {
                   <col style={{width: '38%'}} />
                   <col style={{width: '6%'}} />
                   <col style={{width: '6%'}} />
-                  <col style={{width: '10%'}} />
-                  <col style={{width: '10%'}} />
-                  <col style={{width: '13%'}} />
-                  <col style={{width: '13%'}} />
+                  <col style={{width: '11.5%'}} />
+                  <col style={{width: '11.5%'}} />
+                  <col style={{width: '11.5%'}} />
+                  <col style={{width: '11.5%'}} />
                </colgroup>
                <thead>
                   <tr>
@@ -4868,8 +4738,8 @@ function App() {
                               name: (it.type ? it.type + " " : "") + it.name,
                               unit: it.unit,
                               qty: it.quantity,
-                              unitPriceUsd,
-                              priceUah: it.priceUah,
+                              unitPriceUsd: toNumber(it.priceNormalizedUsd, unitPriceUsd),
+                              priceUah: toNumber(it.priceUah, unitPriceUsd * toNumber(rates.usd, 0)),
                               sumUsd: it.sumUsd,
                               sumUah: it.sumUah
                            });
@@ -4919,25 +4789,49 @@ function App() {
 
                      return rows.map((row, idx) => (
                         <tr key={row.key} className={idx % 2 === 1 ? 'print-alt-row' : ''}>
-                           <td className="text-right" style={{whiteSpace: 'nowrap', fontSize: '1.02rem'}}>{idx + 1}</td>
+                           <td className="text-right" style={{whiteSpace: 'nowrap', fontSize: printMode === 'invoice' ? '0.9rem' : '1.02rem'}}>{idx + 1}</td>
                            <td style={{wordBreak: 'break-word', overflowWrap: 'break-word'}}>{row.name}</td>
-                           <td style={{textAlign: 'center', whiteSpace: 'nowrap', fontSize: '1.02rem'}}>{row.unit}</td>
-                           <td className="text-right" style={{whiteSpace: 'nowrap', fontSize: '1.02rem'}}>{row.qty}</td>
-                           <td className="text-right" style={{whiteSpace: 'nowrap', fontSize: '1rem'}}>{formatMoney(row.unitPriceUsd)}</td>
-                           <td className="text-right" style={{whiteSpace: 'nowrap', fontSize: '1rem'}}>{formatMoney(row.priceUah)}</td>
-                           <td className="text-right" style={{whiteSpace: 'nowrap', fontSize: '1rem'}}>{formatMoney(row.sumUsd)}</td>
-                           <td className="text-right" style={{whiteSpace: 'nowrap', fontSize: '1rem'}}>{formatMoney(row.sumUah)}</td>
+                           <td style={{textAlign: 'center', whiteSpace: 'nowrap', fontSize: printMode === 'invoice' ? '0.9rem' : '1.02rem'}}>{row.unit}</td>
+                           <td className="text-right" style={{whiteSpace: 'nowrap', fontSize: printMode === 'invoice' ? '0.9rem' : '1.02rem'}}>{row.qty}</td>
+                           <td className="text-right" style={{whiteSpace: 'nowrap', fontSize: printMode === 'invoice' ? '0.9rem' : '1rem'}}>{formatMoney(row.unitPriceUsd)}</td>
+                           <td className="text-right" style={{whiteSpace: 'nowrap', fontSize: printMode === 'invoice' ? '0.9rem' : '1rem'}}>{formatMoney(row.priceUah)}</td>
+                           <td className="text-right" style={{whiteSpace: 'nowrap', fontSize: printMode === 'invoice' ? '0.9rem' : '1rem'}}>{formatMoney(row.sumUsd)}</td>
+                           <td className="text-right" style={{whiteSpace: 'nowrap', fontSize: printMode === 'invoice' ? '0.9rem' : '1rem'}}>{formatMoney(row.sumUah)}</td>
                         </tr>
                      ));
                   })()}
                </tbody>
                <tfoot>
+                  {printMode === 'offer' && hasOfferDiscount && (
+                    <tr className="print-total-row">
+                      <td colSpan="4" className="text-right" style={{fontWeight: 'bold', fontSize: '0.98rem'}}>ЗАГАЛОМ ДО СПЛАТИ (БЕЗ ЗНИЖКИ):</td>
+                      <td colSpan="2" className="text-right" style={{fontWeight: 'bold', fontSize: '0.98rem', whiteSpace: 'nowrap', lineHeight: 1.1}}>
+                        ${totalBeforeDiscountUsdParts.whole},{totalBeforeDiscountUsdParts.frac}
+                      </td>
+                      <td colSpan="2" className="text-right" style={{fontWeight: 'bold', fontSize: '0.98rem', whiteSpace: 'nowrap', lineHeight: 1.1}}>
+                        {totalBeforeDiscountUahParts.whole},{totalBeforeDiscountUahParts.frac} грн
+                      </td>
+                    </tr>
+                  )}
+                  {printMode === 'offer' && hasOfferDiscount && (
+                    <tr className="print-total-row">
+                      <td colSpan="4" className="text-right" style={{fontWeight: 'bold', fontSize: '0.98rem'}}>ЗНИЖКА ({formatKw(toNumber(calculations.sums.discountPercent, 0))}%):</td>
+                      <td colSpan="2" className="text-right" style={{fontWeight: 'bold', fontSize: '0.98rem', whiteSpace: 'nowrap', lineHeight: 1.1}}>
+                        -${discountUsdParts.whole},{discountUsdParts.frac}
+                      </td>
+                      <td colSpan="2" className="text-right" style={{fontWeight: 'bold', fontSize: '0.98rem', whiteSpace: 'nowrap', lineHeight: 1.1}}>
+                        -{discountUahParts.whole},{discountUahParts.frac} грн
+                      </td>
+                    </tr>
+                  )}
                   <tr className="print-total-row">
-                     <td colSpan="4" className="text-right" style={{fontWeight: 'bold', fontSize: '1.1rem'}}>ЗАГАЛОМ ДО СПЛАТИ:</td>
-                     <td colSpan="2" className="text-right" style={{fontWeight: 'bold', fontSize: '1.05rem', whiteSpace: 'nowrap', lineHeight: 1.1}}>
+                     <td colSpan="4" className="text-right" style={{fontWeight: 'bold', fontSize: printMode === 'invoice' ? '0.98rem' : '1.1rem'}}>
+                        {printMode === 'offer' && hasOfferDiscount ? 'ЗАГАЛОМ ДО СПЛАТИ (ЗІ ЗНИЖКОЮ):' : 'ЗАГАЛОМ ДО СПЛАТИ:'}
+                     </td>
+                     <td colSpan="2" className="text-right" style={{fontWeight: 'bold', fontSize: printMode === 'invoice' ? '0.98rem' : '1.05rem', whiteSpace: 'nowrap', lineHeight: 1.1}}>
                         ${totalUsdParts.whole},{totalUsdParts.frac}
                      </td>
-                     <td colSpan="2" className="text-right" style={{fontWeight: 'bold', fontSize: '1.05rem', whiteSpace: 'nowrap', lineHeight: 1.1}}>
+                     <td colSpan="2" className="text-right" style={{fontWeight: 'bold', fontSize: printMode === 'invoice' ? '0.98rem' : '1.05rem', whiteSpace: 'nowrap', lineHeight: 1.1}}>
                         {totalUahParts.whole},{totalUahParts.frac} грн
                      </td>
                   </tr>
@@ -5057,6 +4951,64 @@ function App() {
             )}
 
             <div className="no-print" style={{marginTop: '2rem', textAlign: 'center', display: 'flex', gap: '1rem', justifyContent: 'center'}}>
+               {printMode === 'offer' && (
+                 <div style={{display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '0.6rem', width: '100%'}}>
+                   <input
+                     ref={offerAppendPdfInputRef}
+                     type="file"
+                     accept="application/pdf,.pdf"
+                     multiple
+                     style={{display: 'none'}}
+                     onChange={(e) => {
+                       addOfferAppendPdfFiles(e.target?.files);
+                     }}
+                   />
+                   <div
+                     onDragOver={(e) => { e.preventDefault(); }}
+                     onDrop={(e) => {
+                       e.preventDefault();
+                       addOfferAppendPdfFiles(e.dataTransfer?.files);
+                     }}
+                     style={{width: '100%', maxWidth: '560px', border: '1px dashed #64748b', borderRadius: '10px', padding: '0.8rem', color: '#cbd5e1'}}
+                   >
+                     Перетягніть PDF сюди або
+                     <button type="button" className="secondary" style={{background: '#475569', marginLeft: '0.5rem'}} onClick={() => offerAppendPdfInputRef.current?.click()}>
+                       Додати PDF до КП
+                     </button>
+                     <div style={{fontSize: '0.85rem', marginTop: '0.35rem'}}>Максимум 5 файлів</div>
+                   </div>
+                   {offerAppendPdfFiles.length > 0 && (
+                     <div style={{width: '100%', maxWidth: '560px', textAlign: 'left'}}>
+                       {offerAppendPdfFiles.map((f, idx) => (
+                         <div key={`${f.name}-${f.size}-${f.lastModified}`} style={{display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '0.5rem', marginTop: '0.25rem'}}>
+                           <span style={{fontSize: '0.9rem', color: '#cbd5e1', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap'}}>
+                             {idx + 1}. {f.name}
+                           </span>
+                           <button
+                             type="button"
+                             className="danger"
+                             style={{padding: '0.35rem 0.7rem'}}
+                             onClick={() => setOfferAppendPdfFiles((prev) => prev.filter((_, i) => i !== idx))}
+                           >
+                             Видалити
+                           </button>
+                         </div>
+                       ))}
+                       <button
+                         type="button"
+                         className="danger"
+                         style={{padding: '0.5rem 0.8rem', marginTop: '0.5rem'}}
+                         onClick={() => {
+                           setOfferAppendPdfFiles([]);
+                           if (offerAppendPdfInputRef.current) offerAppendPdfInputRef.current.value = '';
+                         }}
+                       >
+                         Очистити всі PDF
+                       </button>
+                     </div>
+                   )}
+                 </div>
+               )}
                <button onClick={() => window.print()} style={{background: '#0284c7', padding: '1rem 2rem'}}>🖨 Відкрити друк</button>
                <button onClick={exportToPdf} style={{background: '#059669', padding: '1rem 2rem'}}>💾 Зберегти в PDF</button>
                {printMode === 'invoice' && (
