@@ -3320,6 +3320,7 @@ function App() {
         <div className="input-group" style={{margin: 0}}>
           <label>Тип титульної сторінки</label>
           <select value={coverPageType} onChange={(e) => setCoverPageType(e.target.value)}>
+            <option value="">Пусто</option>
             {COVER_PAGE_TYPES.map((type) => <option key={type} value={type}>{type}</option>)}
           </select>
         </div>
@@ -4654,7 +4655,11 @@ function App() {
               <div className="offer-cover-page">
                 <img className="offer-cover-image" src={coverPageType === 'Квартира' ? './title2.jpg' : './title1.jpg'} alt="Обкладинка КП" />
                 <div className="offer-cover-content">
-                  <div className="offer-cover-top">КОМЕРЦІЙНА ПРОПОЗИЦІЯ · {coverPageType} · {currentYear}</div>
+                  <div className="offer-cover-top">
+                    {coverPageType
+                      ? `КОМЕРЦІЙНА ПРОПОЗИЦІЯ · ${coverPageType} · ${currentYear}`
+                      : `КОМЕРЦІЙНА ПРОПОЗИЦІЯ · ${currentYear}`}
+                  </div>
                   <h1 className="offer-cover-title">{coverMainTitle}</h1>
                   <div className="offer-cover-subtitle">{coverSubtitle}</div>
                   <div className="offer-cover-address">📍 {coverAddress}</div>
