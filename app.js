@@ -616,6 +616,8 @@ function App() {
   }, [productDatabase]);
 
   const [printMode, setPrintMode] = useState(null); // null, 'offer', 'invoice'
+  const [includeManagerInOffer, setIncludeManagerInOffer] = useState(() => getSaved('solar_includeManagerInOffer', true));
+  const [includeClientInOffer, setIncludeClientInOffer] = useState(() => getSaved('solar_includeClientInOffer', true));
   const [offerAppendPdfFiles, setOfferAppendPdfFiles] = useState([]);
   const offerAppendPdfInputRef = useRef(null);
   const [activeDropdown, setActiveDropdown] = useState(null);
@@ -2319,6 +2321,8 @@ function App() {
   useEffect(() => { localStorage.setItem('solar_coverQrUrl', JSON.stringify(coverQrUrl)); }, [coverQrUrl]);
   useEffect(() => { localStorage.setItem('solar_offerSettingsCollapsed', JSON.stringify(offerSettingsCollapsed)); }, [offerSettingsCollapsed]);
   useEffect(() => { localStorage.setItem('solar_managerContacts', JSON.stringify(managerContacts)); }, [managerContacts]);
+  useEffect(() => { localStorage.setItem('solar_includeManagerInOffer', JSON.stringify(includeManagerInOffer)); }, [includeManagerInOffer]);
+  useEffect(() => { localStorage.setItem('solar_includeClientInOffer', JSON.stringify(includeClientInOffer)); }, [includeClientInOffer]);
   useEffect(() => { localStorage.setItem('solar_selectedManagerId', JSON.stringify(selectedManagerId)); }, [selectedManagerId]);
   useEffect(() => { localStorage.setItem('solar_equipmentGroups', JSON.stringify(equipmentGroups)); }, [equipmentGroups]);
   useEffect(() => { localStorage.setItem('solar_otherExpenses', JSON.stringify(otherExpenses)); }, [otherExpenses]);
@@ -3328,6 +3332,22 @@ function App() {
               onChange={(e) => setShowOfferStationSheet(e.target.checked)}
             />
             <span>Додати “Дані станції”</span>
+          </label>
+          <label style={{display: 'flex', alignItems: 'center', gap: '0.5rem', minHeight: '28px', paddingTop: '0.45rem'}}>
+            <input
+              type="checkbox"
+              checked={includeManagerInOffer}
+              onChange={(e) => setIncludeManagerInOffer(!!e.target.checked)}
+            />
+            <span>Додавати дані менеджера</span>
+          </label>
+          <label style={{display: 'flex', alignItems: 'center', gap: '0.5rem', minHeight: '28px'}}>
+            <input
+              type="checkbox"
+              checked={includeClientInOffer}
+              onChange={(e) => setIncludeClientInOffer(!!e.target.checked)}
+            />
+            <span>Додавати дані замовника</span>
           </label>
         </div>
         <div className="input-group" style={{margin: 0}}>
@@ -4638,7 +4658,7 @@ function App() {
                   <h1 className="offer-cover-title">{coverMainTitle}</h1>
                   <div className="offer-cover-subtitle">{coverSubtitle}</div>
                   <div className="offer-cover-address">📍 {coverAddress}</div>
-                  <div className="offer-cover-manager">Менеджер: {managerNameLabel}</div>
+                  {includeManagerInOffer && <div className="offer-cover-manager">Менеджер: {managerNameLabel}</div>}
                   <div className="offer-cover-metrics">
                     <div>{hasSolar ? "Сонячне поле" : "Потужність"}: {coverPowerLine}</div>
                     <div>Акумулятор: {coverBatteryLine}</div>
@@ -4670,10 +4690,12 @@ function App() {
                 </div>
               )}
 
-              <div className="invoice-customer">
-                <p><strong>Замовник:</strong> {clientInfo.name || "____________________"}</p>
-                <p><strong>Адреса:</strong> {clientInfo.address || "____________________"}</p>
-              </div>
+              {includeClientInOffer && (
+                <div className="invoice-customer">
+                  <p><strong>Замовник:</strong> {clientInfo.name || "____________________"}</p>
+                  <p><strong>Адреса:</strong> {clientInfo.address || "____________________"}</p>
+                </div>
+              )}
             </div>
 
             {printMode === 'offer' && (
@@ -4837,7 +4859,7 @@ function App() {
                   </tr>
                </tfoot>
             </table>
-            {printMode === 'offer' && <OfferManagerBar />}
+            {printMode === 'offer' && includeManagerInOffer && <OfferManagerBar />}
             </div>
 
             {printMode === 'invoice' && (
@@ -4945,7 +4967,7 @@ function App() {
                       </div>
                     )}
                   </div>
-                  <OfferManagerBar />
+                  {includeManagerInOffer && <OfferManagerBar />}
                 </div>
               </>
             )}
