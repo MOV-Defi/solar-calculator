@@ -618,6 +618,8 @@ function App() {
   const [printMode, setPrintMode] = useState(null); // null, 'offer', 'invoice'
   const [includeManagerInOffer, setIncludeManagerInOffer] = useState(() => getSaved('solar_includeManagerInOffer', true));
   const [includeClientInOffer, setIncludeClientInOffer] = useState(() => getSaved('solar_includeClientInOffer', true));
+  const [includeAddressInOffer, setIncludeAddressInOffer] = useState(() => getSaved('solar_includeAddressInOffer', true));
+  const [printCurrencyMode, setPrintCurrencyMode] = useState(() => getSaved('solar_printCurrencyMode', 'both')); // both | usd | uah
   const [offerAppendPdfFiles, setOfferAppendPdfFiles] = useState([]);
   const offerAppendPdfInputRef = useRef(null);
   const [activeDropdown, setActiveDropdown] = useState(null);
@@ -2323,6 +2325,8 @@ function App() {
   useEffect(() => { localStorage.setItem('solar_managerContacts', JSON.stringify(managerContacts)); }, [managerContacts]);
   useEffect(() => { localStorage.setItem('solar_includeManagerInOffer', JSON.stringify(includeManagerInOffer)); }, [includeManagerInOffer]);
   useEffect(() => { localStorage.setItem('solar_includeClientInOffer', JSON.stringify(includeClientInOffer)); }, [includeClientInOffer]);
+  useEffect(() => { localStorage.setItem('solar_includeAddressInOffer', JSON.stringify(includeAddressInOffer)); }, [includeAddressInOffer]);
+  useEffect(() => { localStorage.setItem('solar_printCurrencyMode', JSON.stringify(printCurrencyMode)); }, [printCurrencyMode]);
   useEffect(() => { localStorage.setItem('solar_selectedManagerId', JSON.stringify(selectedManagerId)); }, [selectedManagerId]);
   useEffect(() => { localStorage.setItem('solar_equipmentGroups', JSON.stringify(equipmentGroups)); }, [equipmentGroups]);
   useEffect(() => { localStorage.setItem('solar_otherExpenses', JSON.stringify(otherExpenses)); }, [otherExpenses]);
@@ -2810,6 +2814,8 @@ function App() {
   const discountUsdParts = splitMoneyParts(calculations.sums.discountUsd || 0);
   const discountUahParts = splitMoneyParts((calculations.sums.discountUsd || 0) * toNumber(rates.usd, 0));
   const hasOfferDiscount = toNumber(calculations.sums.discountPercent, 0) > 0;
+  const showUsdInPrint = printCurrencyMode !== 'uah';
+  const showUahInPrint = printCurrencyMode !== 'usd';
   const solarPowerKw = toNumber(calculations.stationPowerW, 0) / 1000;
   const allRows = Object.values(calculations.groups).flat();
   const inverterRows = allRows.filter((row) => row && String(row.type || "").trim() === "Інвертор");
@@ -3349,6 +3355,22 @@ function App() {
               onChange={(e) => setIncludeClientInOffer(!!e.target.checked)}
             />
             <span>Додавати дані замовника</span>
+          </label>
+          <label style={{display: 'flex', alignItems: 'center', gap: '0.5rem', minHeight: '28px'}}>
+            <input
+              type="checkbox"
+              checked={includeAddressInOffer}
+              onChange={(e) => setIncludeAddressInOffer(!!e.target.checked)}
+            />
+            <span>Додавати адресу об'єкта</span>
+          </label>
+          <label style={{display: 'flex', alignItems: 'center', gap: '0.5rem', minHeight: '28px'}}>
+            <span>Валюта в КП/накладній:</span>
+            <select value={printCurrencyMode} onChange={(e) => setPrintCurrencyMode(e.target.value)} style={{maxWidth: '190px'}}>
+              <option value="both">USD + грн (як зараз)</option>
+              <option value="usd">Тільки USD</option>
+              <option value="uah">Тільки грн</option>
+            </select>
           </label>
         </div>
         <div className="input-group" style={{margin: 0}}>
@@ -4698,7 +4720,7 @@ function App() {
               {includeClientInOffer && (
                 <div className="invoice-customer">
                   <p><strong>Замовник:</strong> {clientInfo.name || "____________________"}</p>
-                  <p><strong>Адреса:</strong> {clientInfo.address || "____________________"}</p>
+                  {includeAddressInOffer && <p><strong>Адреса:</strong> {clientInfo.address || "____________________"}</p>}
                 </div>
               )}
             </div>
@@ -4734,10 +4756,10 @@ function App() {
                   <col style={{width: '38%'}} />
                   <col style={{width: '6%'}} />
                   <col style={{width: '6%'}} />
-                  <col style={{width: '11.5%'}} />
-                  <col style={{width: '11.5%'}} />
-                  <col style={{width: '11.5%'}} />
-                  <col style={{width: '11.5%'}} />
+                  {showUsdInPrint && <col style={{width: showUahInPrint ? '11.5%' : '23%'}} />}
+                  {showUahInPrint && <col style={{width: showUsdInPrint ? '11.5%' : '23%'}} />}
+                  {showUsdInPrint && <col style={{width: showUahInPrint ? '11.5%' : '23%'}} />}
+                  {showUahInPrint && <col style={{width: showUsdInPrint ? '11.5%' : '23%'}} />}
                </colgroup>
                <thead>
                   <tr>
@@ -4745,10 +4767,10 @@ function App() {
                      <th>Найменування товару / послуги</th>
                      <th>Од.</th>
                      <th>Кіл-ть</th>
-                     <th style={{fontSize: '0.8rem'}}>Ціна, $</th>
-                     <th style={{fontSize: '0.8rem'}}>Ціна, грн</th>
-                     <th style={{fontSize: '0.8rem'}}>Сума, $</th>
-                     <th style={{fontSize: '0.8rem'}}>Сума, грн</th>
+                     {showUsdInPrint && <th style={{fontSize: '0.8rem'}}>Ціна, $</th>}
+                     {showUahInPrint && <th style={{fontSize: '0.8rem'}}>Ціна, грн</th>}
+                     {showUsdInPrint && <th style={{fontSize: '0.8rem'}}>Сума, $</th>}
+                     {showUahInPrint && <th style={{fontSize: '0.8rem'}}>Сума, грн</th>}
                   </tr>
                </thead>
                <tbody>
@@ -4820,10 +4842,10 @@ function App() {
                            <td style={{wordBreak: 'break-word', overflowWrap: 'break-word'}}>{row.name}</td>
                            <td style={{textAlign: 'center', whiteSpace: 'nowrap', fontSize: printMode === 'invoice' ? '0.9rem' : '1.02rem'}}>{row.unit}</td>
                            <td className="text-right" style={{whiteSpace: 'nowrap', fontSize: printMode === 'invoice' ? '0.9rem' : '1.02rem'}}>{row.qty}</td>
-                           <td className="text-right" style={{whiteSpace: 'nowrap', fontSize: printMode === 'invoice' ? '0.9rem' : '1rem'}}>{formatMoney(row.unitPriceUsd)}</td>
-                           <td className="text-right" style={{whiteSpace: 'nowrap', fontSize: printMode === 'invoice' ? '0.9rem' : '1rem'}}>{formatMoney(row.priceUah)}</td>
-                           <td className="text-right" style={{whiteSpace: 'nowrap', fontSize: printMode === 'invoice' ? '0.9rem' : '1rem'}}>{formatMoney(row.sumUsd)}</td>
-                           <td className="text-right" style={{whiteSpace: 'nowrap', fontSize: printMode === 'invoice' ? '0.9rem' : '1rem'}}>{formatMoney(row.sumUah)}</td>
+                           {showUsdInPrint && <td className="text-right" style={{whiteSpace: 'nowrap', fontSize: printMode === 'invoice' ? '0.9rem' : '1rem'}}>{formatMoney(row.unitPriceUsd)}</td>}
+                           {showUahInPrint && <td className="text-right" style={{whiteSpace: 'nowrap', fontSize: printMode === 'invoice' ? '0.9rem' : '1rem'}}>{formatMoney(row.priceUah)}</td>}
+                           {showUsdInPrint && <td className="text-right" style={{whiteSpace: 'nowrap', fontSize: printMode === 'invoice' ? '0.9rem' : '1rem'}}>{formatMoney(row.sumUsd)}</td>}
+                           {showUahInPrint && <td className="text-right" style={{whiteSpace: 'nowrap', fontSize: printMode === 'invoice' ? '0.9rem' : '1rem'}}>{formatMoney(row.sumUah)}</td>}
                         </tr>
                      ));
                   })()}
@@ -4832,35 +4854,47 @@ function App() {
                   {printMode === 'offer' && hasOfferDiscount && (
                     <tr className="print-total-row">
                       <td colSpan="4" className="text-right" style={{fontWeight: 'bold', fontSize: '0.98rem'}}>ЗАГАЛОМ ДО СПЛАТИ (БЕЗ ЗНИЖКИ):</td>
-                      <td colSpan="2" className="text-right" style={{fontWeight: 'bold', fontSize: '0.98rem', whiteSpace: 'nowrap', lineHeight: 1.1}}>
-                        ${totalBeforeDiscountUsdParts.whole},{totalBeforeDiscountUsdParts.frac}
-                      </td>
-                      <td colSpan="2" className="text-right" style={{fontWeight: 'bold', fontSize: '0.98rem', whiteSpace: 'nowrap', lineHeight: 1.1}}>
-                        {totalBeforeDiscountUahParts.whole},{totalBeforeDiscountUahParts.frac} грн
-                      </td>
+                      {showUsdInPrint && (
+                        <td colSpan="2" className="text-right" style={{fontWeight: 'bold', fontSize: '0.98rem', whiteSpace: 'nowrap', lineHeight: 1.1}}>
+                          ${totalBeforeDiscountUsdParts.whole},{totalBeforeDiscountUsdParts.frac}
+                        </td>
+                      )}
+                      {showUahInPrint && (
+                        <td colSpan="2" className="text-right" style={{fontWeight: 'bold', fontSize: '0.98rem', whiteSpace: 'nowrap', lineHeight: 1.1}}>
+                          {totalBeforeDiscountUahParts.whole},{totalBeforeDiscountUahParts.frac} грн
+                        </td>
+                      )}
                     </tr>
                   )}
                   {printMode === 'offer' && hasOfferDiscount && (
                     <tr className="print-total-row">
                       <td colSpan="4" className="text-right" style={{fontWeight: 'bold', fontSize: '0.98rem'}}>ЗНИЖКА ({formatKw(toNumber(calculations.sums.discountPercent, 0))}%):</td>
-                      <td colSpan="2" className="text-right" style={{fontWeight: 'bold', fontSize: '0.98rem', whiteSpace: 'nowrap', lineHeight: 1.1}}>
-                        -${discountUsdParts.whole},{discountUsdParts.frac}
-                      </td>
-                      <td colSpan="2" className="text-right" style={{fontWeight: 'bold', fontSize: '0.98rem', whiteSpace: 'nowrap', lineHeight: 1.1}}>
-                        -{discountUahParts.whole},{discountUahParts.frac} грн
-                      </td>
+                      {showUsdInPrint && (
+                        <td colSpan="2" className="text-right" style={{fontWeight: 'bold', fontSize: '0.98rem', whiteSpace: 'nowrap', lineHeight: 1.1}}>
+                          -${discountUsdParts.whole},{discountUsdParts.frac}
+                        </td>
+                      )}
+                      {showUahInPrint && (
+                        <td colSpan="2" className="text-right" style={{fontWeight: 'bold', fontSize: '0.98rem', whiteSpace: 'nowrap', lineHeight: 1.1}}>
+                          -{discountUahParts.whole},{discountUahParts.frac} грн
+                        </td>
+                      )}
                     </tr>
                   )}
                   <tr className="print-total-row">
                      <td colSpan="4" className="text-right" style={{fontWeight: 'bold', fontSize: printMode === 'invoice' ? '0.98rem' : '1.1rem'}}>
                         {printMode === 'offer' && hasOfferDiscount ? 'ЗАГАЛОМ ДО СПЛАТИ (ЗІ ЗНИЖКОЮ):' : 'ЗАГАЛОМ ДО СПЛАТИ:'}
                      </td>
-                     <td colSpan="2" className="text-right" style={{fontWeight: 'bold', fontSize: printMode === 'invoice' ? '0.98rem' : '1.05rem', whiteSpace: 'nowrap', lineHeight: 1.1}}>
-                        ${totalUsdParts.whole},{totalUsdParts.frac}
-                     </td>
-                     <td colSpan="2" className="text-right" style={{fontWeight: 'bold', fontSize: printMode === 'invoice' ? '0.98rem' : '1.05rem', whiteSpace: 'nowrap', lineHeight: 1.1}}>
-                        {totalUahParts.whole},{totalUahParts.frac} грн
-                     </td>
+                     {showUsdInPrint && (
+                       <td colSpan="2" className="text-right" style={{fontWeight: 'bold', fontSize: printMode === 'invoice' ? '0.98rem' : '1.05rem', whiteSpace: 'nowrap', lineHeight: 1.1}}>
+                          ${totalUsdParts.whole},{totalUsdParts.frac}
+                       </td>
+                     )}
+                     {showUahInPrint && (
+                       <td colSpan="2" className="text-right" style={{fontWeight: 'bold', fontSize: printMode === 'invoice' ? '0.98rem' : '1.05rem', whiteSpace: 'nowrap', lineHeight: 1.1}}>
+                          {totalUahParts.whole},{totalUahParts.frac} грн
+                       </td>
+                     )}
                   </tr>
                </tfoot>
             </table>
